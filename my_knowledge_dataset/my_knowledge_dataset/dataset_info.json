@@ -1,0 +1,49 @@
+{
+  "builder_name": "csv",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "csv",
+  "dataset_size": 304598,
+  "description": "",
+  "download_checksums": {
+    "/share/llm-verify/knowledge_csv.csv": {
+      "num_bytes": 304474,
+      "checksum": null
+    }
+  },
+  "download_size": 304474,
+  "features": {
+    "text": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "title": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "embeddings": {
+      "feature": {
+        "dtype": "float32",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 609072,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 304598,
+      "num_examples": 20,
+      "dataset_name": "csv"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
