@@ -73,6 +73,13 @@ path = algos.dfs_path('Apple_Inc', 3)
    - Checks if the content is `None`, issues a warning if true, and returns.
    - Saves the content to a text file either in `document_dir` or `new_doc_dir` if specified.
 
+### 'Preparing Documents':
+- Use the make_knowledge_dataset.py file to prepare the documents for the RAG model. from https://github.com/huggingface/transformers/blob/main/examples/research_projects/rag/README.md
+- To use: ```python examples/research_projects/rag/use_own_knowledge_dataset.py \
+    --csv_path path/to/my_csv \
+    --output_dir path/to/my_knowledge_dataset \ ```
+- The csv file should have two columns: filename and content. The filename column should contain the name of the document and the content column should contain the text content of the document. This can be created using the `docs_to_csv` function in `utils.py`.
+
 ### `RagModel` Class:
 1. **Constructor (`__init__`):**
    - Initializes the `RAGModel` object.
