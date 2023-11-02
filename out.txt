@@ -1,8 +1,16 @@
-
-job queue size: 0
-Num Visited entities: 795
-Graph diameter: 19
-Minimum depth: 0
-Entity at minimum depth: Latin_script
-[('Albert_Einstein', 'birthPlace', 'German_Empire', 'German Empire'), ('German_Empire', 'deputy', 'Bernhard_von_Bülow', 'Bernhard von Bülow'), ('Bernhard_von_Bülow', 'birthPlace', 'Duchy_of_Holstein', 'Duchy of Holstein'), ('Duchy_of_Holstein', 'event', 'Second_Schleswig_War', 'Second Schleswig War'), ('Second_Schleswig_War', 'place', 'Saxe-Lauenburg', 'Saxe-Lauenburg'), ('Saxe-Lauenburg', 'capital', 'Lauenburg_(Elbe)', 'Lauenburg (Elbe)'), ('Lauenburg_(Elbe)', 'wikiPageRedirects', 'Lauenburg', 'Lauenburg'), ('Lauenburg', 'federalState', 'Schleswig-Holstein', 'Schleswig-Holstein'), ('Schleswig-Holstein', 'leaderName', 'Daniel_Günther', 'Daniel Günther'), ('Daniel_Günther', 'birthPlace', 'West_Germany', 'West Germany'), ('West_Germany', 'titleDeputy', 'Chancellor_of_Germany', 'Chancellor of Germany'), ('Chancellor_of_Germany', 'seat', 'Bonn', 'Bonn'), ('Bonn', 'source', 'Deutscher_Wetterdienst', 'Deutscher Wetterdienst'), ('Deutscher_Wetterdienst', 'jurisdiction', 'Germany', 'Germany'), ('Germany', 'caption', 'Wanderer_above_the_Sea_of_Fog', 'Wanderer above the Sea of Fog'), ('Wanderer_above_the_Sea_of_Fog', 'city', 'Hamburg', 'Hamburg'), ('Hamburg', 'leaderName', 'Peter_Tschentscher', 'Peter Tschentscher'), ('Peter_Tschentscher', 'honorificSuffix', 'Bundesrat_of_Germany', 'Bundesrat of Germany'), ('Bundesrat_of_Germany', 'wikiPageRedirects', 'German_Bundesrat', 'German Bundesrat'), ('German_Bundesrat', 'location', 'Berlin', 'Berlin'), ('Berlin', 'blankInfoSec', '.berlin', '.berlin'), ('.berlin', 'type', 'GeoTLD', 'GeoTLD'), ('GeoTLD', 'wikiPageRedirects', 'Geographic_top-level_domain', 'Geographic top-level domain')]
-Time taken: 52.34670829772949
+Num Visited entities: 45
+Time Taken: 30.644562482833862 seconds
+dict_keys(['Albert_Einstein', 'Ulm', 'German_Empire', 'Coat_of_arms_of_Germany', 'Bernhard_von_Bülow', 'Stadtteil', 'Baden-Württemberg', 'Germany', 'First_level_NUTS_of_the_European_Union', 'Winfried_Kretschmann', 'Duchy_of_Holstein', 'Rome', 'President_of_Germany', "Repubblica_–_Teatro_dell'Opera_(Rome_Metro)", 'Caspar_David_Friedrich', 'Santa_Maria_Maggiore', 'Santa_Maria_in_Trastevere', 'Allied-occupied_Germany', 'Danish_language', 'Württemberg-Hohenzollern'])
+dict_keys(['Albert_Einstein', 'Ulm', 'German_Empire', 'Coat_of_arms_of_Germany', 'Bernhard_von_Bülow', 'Stadtteil', 'Baden-Württemberg', 'Germany', 'First_level_NUTS_of_the_European_Union', 'Winfried_Kretschmann', 'Duchy_of_Holstein', 'Rome', 'President_of_Germany', "Repubblica_–_Teatro_dell'Opera_(Rome_Metro)", 'Caspar_David_Friedrich', 'Santa_Maria_Maggiore', 'Santa_Maria_in_Trastevere', 'Allied-occupied_Germany', 'Danish_language', 'Württemberg-Hohenzollern'])
+5
+['Albert_Einstein', 'German_Empire', 'Coat_of_arms_of_Germany', 'Germany']
+['Albert_Einstein', 'Ulm', 'Baden-Württemberg']
+['commonLanguages', 'ancestor', 'federalState', 'country', 'blankNameSec', 'era', 'currency', 'owningOrganisation', 'constitutingInstrument', 'markTitle', 'fam', 'birthPlace', 'deathPlace', 'leaderTitle', 'caption', 'symbolType', 'ethnicity', 'division', 'timeZone', 'location', 'leaderName', 'armiger', 'residence', 'architect', 'symbolTypeArticle', 'eventPre', 'anthem', 'inaugural', 'next', 'capital', 'wikiPageRedirects', 'deputy', 'status']
+Albert_Einstein -> birthPlace -> Ulm
+Ulm -> federalState -> Baden-Württemberg
+Fetching Albert_Einstein
+Saved Albert_Einstein
+Fetching Ulm
+Saved Ulm
+Fetching Baden-Württemberg
+Saved Baden-Württemberg
