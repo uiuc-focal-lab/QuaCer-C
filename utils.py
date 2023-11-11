@@ -14,6 +14,29 @@ import os
 import wikipediaapi
 from transformers import AutoTokenizer, RagRetriever, RagSequenceForGeneration
 import torch
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import os
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.llms import OpenAI
+from langchain.chains import RetrievalQA
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from langchain.document_loaders import HuggingFaceDatasetLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from transformers import AutoTokenizer, pipeline
+from langchain import HuggingFacePipeline
+from langchain.document_loaders import TextLoader
+from langchain.agents import initialize_agent, Tool
+from langchain.agents import AgentType
+from langchain.tools import BaseTool
+from langchain.llms import OpenAI
+from langchain.chains import LLMMathChain
+from langchain.utilities import SerpAPIWrapper
+import torch
+from langchain.docstore import Wikipedia
+from langchain.agents.react.base import DocstoreExplorer
 
 class DBPediaReader():
     def __init__(self, dbpedia_url='https://dbpedia.org/sparql', max_threads=20, request_timeout=5):
@@ -64,9 +87,16 @@ class DBPediaReader():
             ?propertyRelation rdfs:label ?propertyLabel .
             FILTER (lang(?relatedEntityLabel) = "en")
             FILTER (lang(?propertyLabel) = "en")
-            FILTER (?propertyRelation != <http://dbpedia.org/ontology/wikiPageWikiLink>) 
+            FILTER (?propertyRelation != <http://dbpedia.org/ontology/wikiPageWikiLink>)
+            FILTER (?propertyRelation != <http://dbpedia.org/property/label>)
+            FILTER (!REGEX(STR(?propertyRelation), "http://dbpedia.org/property/.+Info"))
+            FILTER(?propertyRelation != <http://dbpedia.org/property/isoCode>)
+           FILTER(?propertyRelation != <http://dbpedia.org/property/subdivisionType>)
+           FILTER(?propertyRelation != <http://dbpedia.org/property/subdivisionName>)
+           FILTER (!REGEX(STR(?propertyRelation), "http://dbpedia.org/property/.+subdivision"))
+           FILTER (!REGEX(STR(?propertyRelation), "http://dbpedia.org/property/.+blank"))
         }}
-        LIMIT 10
+        LIMIT 15
         """ # filtered out wikipedia page links, which are not correct next entities
         try:
             data = requests.get(self.dbpedia_url, params={'query': sparql, 'format': 'json'}, timeout=self.REQUEST_TIMEOUT).json()
@@ -80,7 +110,7 @@ class DBPediaReader():
                 for binding in data['results']['bindings']
             ]
             #time.sleep(1.0)  # To avoid hitting the server too frequently
-            return list(random.sample(relatedEntities, min(3, len(relatedEntities)))) # return a sample of all related entries, instead of all entries
+            return list(random.sample(relatedEntities, min(10, len(relatedEntities)))) # return a sample of all related entries, instead of all entries
 
         except Exception as e:
             print(f"Query for entity {entity} timed out." + str(e)[:200])
@@ -158,7 +188,8 @@ class GraphAlgos():
 
         if len(path) - 1 == length:  # -1 because the length of path includes the starting node
             return path  # Return the path if it's of the desired length
-
+        if start not in self.graph:
+            return None
         neighbors = self.graph[start]
         if not neighbors:
             return None # Return None if there are no neighbors
@@ -271,8 +302,257 @@ def docs_to_csv(docs_dir, csv_filename):
                 content = f.read()
                 with open(csv_filename, 'a') as csv_file:
                     csv_file.write(f"{file},{content}\n")
+
+def docs_to_contriever_docs(docs_dir, tsv_filename):
+    if not os.path.exists(tsv_filename):
+        with open(tsv_filename, 'w') as tsv_file:
+            tsv_file.write("id\ttext\ttitle\n")
+    text_splitter = RecursiveCharacterTextSplitter(
+        # Set a really small chunk size, just to show.
+        chunk_size = 500,
+        chunk_overlap  = 50
+    )
+    i = 0
+    to_write = ""
+    for file in os.listdir(docs_dir):
+        if file.endswith(".txt"):
+            print(file)
+            with open(f"{docs_dir}/{file}", 'r') as f:
+                content = f.read()
+            chunks = content.split("\n\n")
+            # lines = chunks[0].split("\n")
+            # title = lines[0]
+            for chunk in chunks:
+                chunk = chunk.strip()
+                chunk = chunk.replace("\n", ";")
+                chunk = chunk.replace("\t", " ")
+                title = file[:-4]
+                title.replace('_', ' ')
+                to_write += f"{str(i)}\t{chunk}\t{title}\n"
+                i += 1
+    with open(tsv_filename, 'a') as tsv_file:
+        tsv_file.write(to_write)
     
 def load_graph(file_name):
     with open(file_name, 'r') as f:
         graph = json.load(f)
     return graph
+
+class MultiRAGWiki():
+    def __init__(self, model_name=None, documents_dir=None, pipeline_type='text-generation', model_temp=0.7, cuda_device=1, openai=False) -> None:
+        self.model_name = model_name
+        self.documents_dir = documents_dir
+        self.doc_db = None
+        self.llm = None
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=40)
+        self.tokenizer = None
+        self.pipeline_type = pipeline_type
+        self.model_temp = model_temp
+        self.tools = None
+        self.agent = None
+        self.cuda_device = cuda_device
+        self.embeddings = None
+        self.retrieval_qa = None
+        self.openai = openai
+        if self.openai == False:
+            assert model_name is not None
+        self.initialize_llm()
+        self.initialize_retriever()
+    def initialize_llm(self):
+        if not self.openai:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, padding=True, truncation=True, max_length=512)
+            # Define a question-answering pipeline using the model and tokenizer
+            question_answerer = pipeline(
+                self.pipeline_type, 
+                model=self.model_name, 
+                tokenizer=self.tokenizer,
+                device=self.cuda_device,
+                torch_dtype=torch.float16,
+            )
+            self.llm = HuggingFacePipeline(
+                pipeline=question_answerer,
+                model_kwargs={"temperature": self.model_temp, "max_length": 512},
+            )
+        else:
+            self.llm = OpenAI(temperature=0, model_name="text-davinci-002")
+    def initialize_retriever(self):
+        self.tools = None
+        self.retrieval_qa = None
+        self.doc_db = None
+        print('initializing retriever')
+        self.retrieval_qa = DocstoreExplorer(Wikipedia())
+        self.tools = [Tool(
+        name="Search",
+        func=self.retrieval_qa.search,
+        description="useful for when you need to ask with search",
+    ),
+    Tool(
+        name="Lookup",
+        func=self.retrieval_qa.lookup,
+        description="useful for when you need to ask with lookup",
+    ),]
+        # self.tools = []
+        self.agent = initialize_agent(self.tools, self.llm, agent=AgentType.REACT_DOCSTORE, verbose=True, handle_parsing_errors=True)
+    
+    def run(self, query):
+        return self.agent.run(query)
+
+class MultiRAGOneStore():
+    def __init__(self, model_name=None, documents_dir=None, pipeline_type='text-generation', model_temp=0.7, cuda_device=1, openai=False, llm=None) -> None:
+        self.model_name = model_name
+        self.documents_dir = documents_dir
+        self.doc_db = None
+        self.llm = llm
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=40)
+        self.tokenizer = None
+        self.pipeline_type = pipeline_type
+        self.model_temp = model_temp
+        self.tools = None
+        self.agent = None
+        self.cuda_device = cuda_device
+        self.embeddings = None
+        self.retrieval_qa = None
+        self.openai = openai
+        if self.openai == False and self.llm is None:
+            assert(self.model_name is not None)
+        assert(self.documents_dir is not None)
+        if self.llm is None:
+            self.initialize_llm()
+        self.initialize_retriever()
+    def initialize_llm(self):
+        if not self.openai:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, padding=True, truncation=True, max_length=512)
+            # Define a question-answering pipeline using the model and tokenizer
+            question_answerer = pipeline(
+                self.pipeline_type, 
+                model=self.model_name, 
+                tokenizer=self.tokenizer,
+                device=self.cuda_device,
+                torch_dtype=torch.float16,
+            )
+
+            self.llm = HuggingFacePipeline(
+                pipeline=question_answerer,
+                model_kwargs={"temperature": self.model_temp, "max_length": 512},
+            )
+        else:
+            self.llm = OpenAI(temperature=0, model_name="text-davinci-002")
+    def initialize_retriever(self):
+        self.tools = None
+        self.retrieval_qa = None
+        self.doc_db = None
+        if self.embeddings is None:
+            self.embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2',model_kwargs={'device': 'cuda'})
+        print('initializing retriever')
+        all_texts = []
+        for file in os.listdir(self.documents_dir):
+            doc_path = os.path.join(self.documents_dir, file)
+            loader = TextLoader(doc_path)
+            doc = loader.load()
+            texts = self.text_splitter.split_documents(doc)
+            all_texts.extend(texts)
+        self.doc_db = Chroma.from_documents(all_texts, self.embeddings, collection_name='all')
+        
+        self.retrieval_qa = RetrievalQA.from_chain_type(llm=self.llm, chain_type='stuff', retriever=self.doc_db.as_retriever())
+        self.tools = [Tool(
+                name="Intermediate Answer",
+                func=self.retrieval_qa.run,
+                description=f"useful for when you need to answer questions about anything",
+            )]
+        # self.tools = []
+        self.agent = initialize_agent(self.tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True)
+    
+    def run(self, query):
+        return self.agent.run(query)
+
+class MultiRAGMultiStore():
+    def __init__(self, model_name=None, documents_dir=None, pipeline_type='text-generation', model_temp=0.7, cuda_device=1, openai=False, llm=None) -> None:
+        self.model_name = model_name
+        self.documents_dir = documents_dir
+        self.doc_dbs = []
+        self.files = []
+        self.llm = llm
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=40)
+        self.tokenizer = None
+        self.pipeline_type = pipeline_type
+        self.openai = openai
+        self.model_temp = model_temp
+        self.retrieval_qas = []
+        self.tools = []
+        self.agent = None
+        self.cuda_device = cuda_device
+        self.embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2',model_kwargs={'device': 'cuda'})
+        if self.openai == False and self.llm is None:
+            assert(self.model_name is not None)
+        assert(self.documents_dir is not None)
+        if self.llm is None:
+            self.initialize_llm()
+        self.initialize_retriever()
+    def initialize_llm(self):
+        if not self.openai:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, padding=True, truncation=True, max_length=512)
+            # Define a question-answering pipeline using the model and tokenizer
+            question_answerer = pipeline(
+                self.pipeline_type, 
+                model=self.model_name, 
+                tokenizer=self.tokenizer,
+                device=self.cuda_device
+            )
+
+            self.llm = HuggingFacePipeline(
+                pipeline=question_answerer,
+                model_kwargs={"temperature": self.model_temp, "max_length": 512},
+            )
+        else:
+            self.llm = OpenAI(temperature=0, model_name="text-davinci-002")
+    def initialize_retriever(self):
+        self.tools = []
+        self.retrieval_qas = []
+        self.doc_dbs = []
+        self.files = []
+        print('initializing retriever')
+        for file in os.listdir(self.documents_dir):
+            doc_path = os.path.join(self.documents_dir, file)
+            loader = TextLoader(doc_path)
+            doc = loader.load()
+            texts = self.text_splitter.split_documents(doc)
+            collection_name = file[:-4]
+            collection_name = collection_name.replace(',', '_')
+            collection_name = collection_name.replace('.', '_')
+            collection_name = collection_name.replace('(', '')
+            collection_name = collection_name.replace(')', '')
+            if len(collection_name) > 60:
+                collection_name = collection_name[:60]
+            doc_db = Chroma.from_documents(texts, self.embeddings, collection_name=collection_name)
+            self.doc_dbs.append(doc_db)
+            self.files.append(file[:-4])
+        
+        for i in range(len(self.doc_dbs)):
+            self.retrieval_qas.append(RetrievalQA.from_chain_type(llm=self.llm, chain_type='stuff', retriever=self.doc_dbs[i].as_retriever()))
+            self.files[i] = self.files[i].replace('_', ' ')
+            self.tools.append(Tool(
+                    name=self.files[i],
+                    func=self.retrieval_qas[i].run,
+                    description=f"useful for when you need to answer questions about {self.files[i]}",
+                ))
+        # self.tools = []
+        self.agent = initialize_agent(self.tools, self.llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True, handle_parsing_errors=True)
+    
+    def run(self, query):
+        return self.agent.run(query)
+
+def run_query(multi_rag, query):
+    limit = 5
+    for i in range(5):
+        try:
+            response = multi_rag.run(query)
+            print(response)
+            break
+        except Exception as e:
+            response = str(e)
+            if not response.startswith("Could not parse"):
+                raise e
+            response = response.removeprefix("Could not parse").removesuffix("`")
+            response_split = response.split(":")
+            response = ' '.join(response_split[1:])
+            query = response

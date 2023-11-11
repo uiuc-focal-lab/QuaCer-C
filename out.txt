@@ -1,16 +1,22 @@
-Num Visited entities: 45
-Time Taken: 30.644562482833862 seconds
-dict_keys(['Albert_Einstein', 'Ulm', 'German_Empire', 'Coat_of_arms_of_Germany', 'Bernhard_von_Bülow', 'Stadtteil', 'Baden-Württemberg', 'Germany', 'First_level_NUTS_of_the_European_Union', 'Winfried_Kretschmann', 'Duchy_of_Holstein', 'Rome', 'President_of_Germany', "Repubblica_–_Teatro_dell'Opera_(Rome_Metro)", 'Caspar_David_Friedrich', 'Santa_Maria_Maggiore', 'Santa_Maria_in_Trastevere', 'Allied-occupied_Germany', 'Danish_language', 'Württemberg-Hohenzollern'])
-dict_keys(['Albert_Einstein', 'Ulm', 'German_Empire', 'Coat_of_arms_of_Germany', 'Bernhard_von_Bülow', 'Stadtteil', 'Baden-Württemberg', 'Germany', 'First_level_NUTS_of_the_European_Union', 'Winfried_Kretschmann', 'Duchy_of_Holstein', 'Rome', 'President_of_Germany', "Repubblica_–_Teatro_dell'Opera_(Rome_Metro)", 'Caspar_David_Friedrich', 'Santa_Maria_Maggiore', 'Santa_Maria_in_Trastevere', 'Allied-occupied_Germany', 'Danish_language', 'Württemberg-Hohenzollern'])
-5
-['Albert_Einstein', 'German_Empire', 'Coat_of_arms_of_Germany', 'Germany']
-['Albert_Einstein', 'Ulm', 'Baden-Württemberg']
-['commonLanguages', 'ancestor', 'federalState', 'country', 'blankNameSec', 'era', 'currency', 'owningOrganisation', 'constitutingInstrument', 'markTitle', 'fam', 'birthPlace', 'deathPlace', 'leaderTitle', 'caption', 'symbolType', 'ethnicity', 'division', 'timeZone', 'location', 'leaderName', 'armiger', 'residence', 'architect', 'symbolTypeArticle', 'eventPre', 'anthem', 'inaugural', 'next', 'capital', 'wikiPageRedirects', 'deputy', 'status']
-Albert_Einstein -> birthPlace -> Ulm
-Ulm -> federalState -> Baden-Württemberg
-Fetching Albert_Einstein
-Saved Albert_Einstein
-Fetching Ulm
-Saved Ulm
-Fetching Baden-Württemberg
-Saved Baden-Württemberg
+['Chandler_Bing', 'United_States', 'John_Roberts', 'Harvard_University']
+['Chandler_Bing', 'Matthew_Perry', 'John_Bennett_Perry', 'Williamstown,_Massachusetts', 'Berkshire_County,_Massachusetts', 'Litchfield_County,_Connecticut', 'United_States', 'United_States_Congress', 'United_States_Capitol']
+Chandler_Bing -> portrayer -> Matthew_Perry
+Matthew_Perry -> father -> John_Bennett_Perry
+Fetching Chandler_Bing
+Saved Chandler_Bing
+Fetching Matthew_Perry
+Saved Matthew_Perry
+Fetching John_Bennett_Perry
+Saved John_Bennett_Perry
+Fetching Williamstown,_Massachusetts
+Saved Williamstown,_Massachusetts
+Fetching Berkshire_County,_Massachusetts
+Saved Berkshire_County,_Massachusetts
+Fetching Litchfield_County,_Connecticut
+Saved Litchfield_County,_Connecticut
+Fetching United_States
+Saved United_States
+Fetching United_States_Congress
+Saved United_States_Congress
+Fetching United_States_Capitol
+Saved United_States_Capitol
