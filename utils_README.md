@@ -56,6 +56,7 @@ path = algos.dfs_path('Apple_Inc', 3)
 - ```get_vertices(self)```: Returns a list of all vertices in the graph.
 - ```get_relations(self)```: Returns a list of all relations in the graph.
 - ```get_relation_for_vertex(self, start_vertex, target_vertex)```: Returns the relation between two specified vertices.
+- ```generate_random_query(k=5)``` generates random question from knowledge graph where vertices are  at most k distance apart. Also, prints the path for reference.
 
 ### `WikiText` Class:
 1. **Constructor (`__init__`):**
@@ -199,3 +200,13 @@ MultiRAGOneStore(documents_dir=//data_path//, pipeline_type='text-generation', m
     - Reads a JSON file specified by `file_name` and loads the graph data from the file.
     - Returns the loaded graph data as a dictionary.
    
+### Checker Classes
+
+#### GeminiChecker
+GeminiChecker Class that checks the RAG model response in relation to the ground truth and the question, before tusing add environment variable GOOGLE_API_KEY, and then use as follows:
+```python 
+checker = GeminiChecker()
+checker.raw_checker(question="What is David Beckham's Nationality?", correct_ans="England", model_ans="British", return_response=True)
+```
+The raw_checker function returns a tuple first index is 1 if the model answer matches the correct answer and 0 otherwise. Second index depends on whether return_response if True or False. By default it is False. If True, response object from Gemini is returned else None is returned at the second index.
+

@@ -7,3 +7,4 @@ pytorch-lightning >= 1.5.10, <=1.6.0
 transformers
 GitPython
 wikipedia-api
+google-cloud-aiplatform
