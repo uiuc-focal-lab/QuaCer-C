@@ -2,7 +2,7 @@
 
 This code contains checkpoints and training code for the following work:
 
-* ["Quantitative Certification of Knowledge Comprehension in LLMs"](link).
+* **Quantitative Certification of Knowledge Comprehension in LLMs**
 
 ## Overview
 - This work aims to certify the knowledge comprehension ability of LLMs during in-context learning.
@@ -45,7 +45,7 @@ certificate.*
 4. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
 
 ### Wikidata5m Filtered:
-- You can get the related files here: insert_link (git lfs/google drive)
+- You can get the related files here: insert_link [(google drive)](https://drive.google.com/drive/folders/1q3ELIwexfTiW1mVSJTlQez_6Gvp5Pd9X?usp=sharing)
 - You can also generated the kg files using the wikidata5m.ipynb notebook.
 - *wikidata5m_en_util_unidecoded.json*: stores the filtered knowledge graph with english names in the format: 
 `
@@ -149,8 +149,6 @@ The script saves results as pickle files (.pkl) with the entity ID of the pivot 
 * **--results_path (str):** Where to save experimental results. 
 * **--entity_aliases_path (str), --id2name_path (str), --relation_aliases_path (str):** Paths to the respective data files.
 * **--num_queries (int):** The total number of questions to generate in the experiment.
-
-Absolutely! Here's a README draft for `llama_experiment.py`, taking into account the differences in this experiment's setup:
 
 ### Experiment with llama2
 
