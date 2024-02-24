@@ -107,11 +107,10 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_
             del model_inputs, generated_ids, decoded
             torch.cuda.empty_cache()
             gc.collect()
-            if num_iter %50 ==1:
-                (low, high) = proportion_confint(correct, total, method='beta')
-                if high - low < 0.1:
-                    break
-                print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
+            (low, high) = proportion_confint(correct, total, method='beta')
+            if high - low < 0.1:
+                break
+            print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
         print(f'Completed {num_queries} queries, {correct} correct out of {total} total')
     vertex_id = name2id[source]
     with open(f'/home/vvjain3/rag-llm-verify/wikidata-scripts/mistral7b_answers/exp7b_{vertex_id}.pkl', 'wb') as f:

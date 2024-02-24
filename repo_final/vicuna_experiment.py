@@ -152,12 +152,11 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_
                 correct += results[-1]['result'][0]
                 total += 1
             print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
-            if num_iter % 50 ==1:
-                interval_conf = proportion_confint(correct, total, method='beta', alpha=0.05)
-                low = round(interval_conf[0], 2)
-                up = round(interval_conf[1], 2)
-                if round(up - low, 2) < 0.1:
-                    break
+            interval_conf = proportion_confint(correct, total, method='beta', alpha=0.05)
+            low = round(interval_conf[0], 2)
+            up = round(interval_conf[1], 2)
+            if round(up - low, 2) < 0.1:
+                break
             del model_answers
             torch.cuda.empty_cache()
             gc.collect()
