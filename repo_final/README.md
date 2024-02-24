@@ -231,3 +231,6 @@ Absolutely! Here's a small README for `server.py`:
     * **`process_request()`** Handles incoming requests, calls the checker, and prepares the response.
     * **`check_answer()`**  The function that interfaces with your Mistral (or other) checker model.
     * **`main()`** Sets up the socket server and handles the listening loop.
+
+### Evaluating Checker
+*    Our work on evaluating the MistralChecker is present in the checker_mistral_evaluate.ipynb file. FOr details reagarding evaluating see the appendix of the paper.
