@@ -21,8 +21,8 @@ checker_host, checker_port = None, None
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
-    parser.add_argument('--qa_llm_path', type=str, default='/share/models/llama2/llama-2-7b-chat')
-    parser.add_argument('--tokenizer_path', type=str, default='/home/vvjain3/rag-llm-verify/llama/tokenizer.model')
+    parser.add_argument('--qa_llm_path', type=str, default='')
+    parser.add_argument('--tokenizer_path', type=str, default='')
     parser.add_argument('--qa_graph_path', type=str, default='wikidata5m_en_util_unidecoded1.json')
     parser.add_argument('--context_graph_path', type=str, default='wikidata5m_en_text1.json')
     parser.add_argument('--results_path', type=str, default='results_exprimentmist.pkl')
