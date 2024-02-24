@@ -21,10 +21,11 @@ checker_host, checker_port = None, None
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
-    parser.add_argument('--qa_llm_path', type=str, default='')
-    parser.add_argument('--tokenizer_path', type=str, default='')
-    parser.add_argument('--qa_graph_path', type=str, default='wikidata5m_en_util_unidecoded1.json')
-    parser.add_argument('--context_graph_path', type=str, default='wikidata5m_en_text1.json')
+    llama_path = os.getenv('LLAMA_PATH')
+    parser.add_argument('--qa_llm_path', type=str, default=os.path.join(llama_path, 'llama-2-7b-chat'))
+    parser.add_argument('--tokenizer_path', type=str, default=os.path.join(llama_path, 'tokenizer.model'))
+    parser.add_argument('--qa_graph_path', type=str, default='wikidata5m_en_util_unidecoded.json')
+    parser.add_argument('--context_graph_path', type=str, default='wikidata5m_en_text.json')
     parser.add_argument('--results_path', type=str, default='results_exprimentmist.pkl')
     parser.add_argument('--entity_aliases_path', type=str, default='wikidata5m_entity.txt')
     parser.add_argument('--id2name_path', type=str, default='wikidata_name_id_uni1.json')
@@ -169,13 +170,12 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, entity
 def main():
     global qa_model, checker_host, checker_port
     args = get_args()
+    qa_model = build_llama(args.qa_llm_path, args.tokenizer_path)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph = json.load(open(args.context_graph_path))
     id2name = json.load(open(args.id2name_path))
     name2id = {v:k for k,v in id2name.items()}
     checker_host, checker_port = args.host, args.port
-    qa_model = build_llama(args.qa_llm_path, args.tokenizer_path)
-    
     entity_aliases = load_aliases(args.entity_aliases_path)
     relation_aliases = load_aliases(args.relation_aliases_path)
 
@@ -184,8 +184,7 @@ def main():
     qa_graph_algos = GraphAlgos(qa_graph)
     best_vertices = qa_graph_algos.get_best_vertices(num=1000)
     random.shuffle(best_vertices)
-    todo = ['Q16264506']
-    for i, vertex_id in enumerate(todo):
+    for i, vertex_id in enumerate(best_vertices):
         vertex = id2name[vertex_id]
         start_time = time.time()
         subgraph = qa_graph_algos.create_subgraph_within_radius(vertex, 4)

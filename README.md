@@ -41,7 +41,8 @@ certificate.*
 
 1. **Install Packages:** `pip install transformers numpy statsmodels unidecode genai torch fastchat accelerate`
 2. For **LLaMA2**: follow instructions at https://github.com/facebookresearch/llama. Clone the repository as llama_local for use with existing scripts or modify the import statements in the llama2 script accordingly.
-2. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
+3. Add environment variable 'LLAMA_PATH' which is the folder where the llama2 weights and tokenzier and stored, you can also pass in the full path if required to run the scripts.
+4. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
 
 ### Wikidata5m Filtered:
 - You can get the related files here: insert_link (git lfs/google drive)
