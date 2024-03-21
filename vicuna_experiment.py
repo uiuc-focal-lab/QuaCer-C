@@ -12,39 +12,36 @@ import pickle
 import time
 import torch
 import gc
-from fastchat.model import load_model, get_conversation_template, add_model_args
-from accelerate import infer_auto_device_map
+from llama_local import example_chat_completion as ecc
+import socket
 
 BATCH_NUM = 2
-qa_model, tokenizer, checker_llm = None, None, None
+qa_model = None
+checker_host, checker_port = None, None
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
-    parser.add_argument('--qa_llm', type=str, default='lmsys/vicuna-7b-v1.5')
-    parser.add_argument('--checker_llm', type=str, default='mistralai/Mistral-7B-Instruct-v0.2')
-    parser.add_argument('--qa_graph_path', type=str, default='wikidata5m_en_util_unidecoded1.json')
-    parser.add_argument('--context_graph_path', type=str, default='wikidata5m_en_text1.json')
-    parser.add_argument('--qa_llm_device', type=str, default='cuda:1')
-    parser.add_argument('--checker_llm_device', type=str, default='cuda:3')
-    parser.add_argument('--results_path', type=str, default='results_exprimentmist.pkl')
+    parser.add_argument('--qa_llm', type=str, default='lmsys/vicuna-13b-v1.5')
+    parser.add_argument('--qa_graph_path', type=str, default='wikidata_graphs/wikidata_util.json')
+    parser.add_argument('--context_graph_path', type=str, default='wikidata_graphs/wikidata_text.json')
+    parser.add_argument('--results_dir', type=str, default='16bit_vicuna13/')
     parser.add_argument('--entity_aliases_path', type=str, default='wikidata5m_entity.txt')
-    parser.add_argument('--id2name_path', type=str, default='wikidata_name_id_uni1.json')
+    parser.add_argument('--id2name_path', type=str, default='wikidata_graphs/wikidata_name_id.json')
     parser.add_argument('--relation_aliases_path', type=str, default='wikidata5m_relation.txt')
 
     parser.add_argument('--num_queries', type=int, default=1000)
 
-    parser.add_argument('--gpu_map', type=dict, default={0: "0GiB", 1: "25GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"})
+    parser.add_argument('--gpu_map', type=dict, default={0: "25GiB", 1: "0GiB", 2: "0GiB", 3: "28GiB", "cpu":"120GiB"})
+    parser.add_argument('--host', type=str, default='localhost')
+    parser.add_argument('--port', type=int, default=12345)
     return parser.parse_args()
 
-def simple_checker(model_answer, correct_answer, correct_answer_aliases, name2id):
+def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct_id):
     model_answer = unidecode(model_answer).lower()
     correct_answer = unidecode(correct_answer).lower()
     if correct_answer in model_answer:
         return 1
 
-    if correct_answer not in name2id:
-        return 0
-    correct_id = name2id[correct_answer]
     if correct_id not in correct_answer_aliases:
         return 0
     for answer_alias in correct_answer_aliases[correct_id]:
@@ -52,16 +49,30 @@ def simple_checker(model_answer, correct_answer, correct_answer_aliases, name2id
             return 1
     return 0
 
-def check_answer(question, correct_answer, model_answer, entity_aliases, name2id):
-    global checker_llm, qa_model, tokenizer
-    if simple_checker(model_answer, correct_answer, entity_aliases, name2id) == 1:
+def check_answer(question, correct_answer, model_answer, entity_aliases, correct_id):
+    global qa_model, checker_host, checker_port
+    if simple_checker(model_answer, correct_answer, entity_aliases, correct_id) == 1:
         return 1
-    return checker_llm.raw_checker(question=question, correct_ans=correct_answer, model_ans=model_answer)[0]
+    result_dict = None
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((checker_host, checker_port))
+        # Prepare and send a request
+        request_data = {'question':question, 'correct_answer':correct_answer, 'model_answer': model_answer}
+        s.sendall(json.dumps(request_data).encode('utf-8'))
+        response = s.recv(1024)
+        result_dict = json.loads(response.decode('utf-8'))
+    if result_dict is not None:
+        return result_dict['result']
+    raise RuntimeError('Checker server did not return a result')
+    return 0
 
-def load_model(model_name="lmsys/vicuna-13b-v1.5", only_tokenizer=False, gpu_map={0: "0GiB", 1: "25GiB", 2: "0GiB", 3: "32GiB", "cpu":"120GiB"}):
+def load_model(model_name="lmsys/vicuna-13b-v1.5", only_tokenizer=False, gpu_map={0: "25GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}):
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
     if not only_tokenizer:
-        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', torch_dtype=torch.float16, max_memory=gpu_map)
+    #     model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, load_in_4bit=True, bnb_4bit_quant_type="nf4",
+    # bnb_4bit_compute_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
+        # model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.bfloat16, load_in_8bit=True)
         return tokenizer, model
     else:
         return tokenizer, None
@@ -78,7 +89,7 @@ def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top
         return prompt
 
     input_ids = [update_ids(p) for p in prompts]
-    input_ids = tokenizer(input_ids, return_tensors="pt", padding=True).to('cuda:1')
+    input_ids = tokenizer(input_ids, return_tensors="pt", padding=True).to('cuda:0')
     input_ids = input_ids.input_ids
     generated_ids = model.generate(
         input_ids,
@@ -97,13 +108,14 @@ def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top
     gc.collect()
     return decoded
 
-def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_device='cuda:0', entity_aliases=None, name2id=None, source=None, relation_aliases=None):
+def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id, relation_name2id, source, relation_aliases, id2name, k=5, num_queries=5):
     global qa_model, tokenizer, checker_llm
     results = []
     correct = 0
     total = 0
     all_queries = []
     all_keys = list(graph_text.keys())
+    sys_prompts = ['You are a helpful honest assistant question answerer that answers queries succintly' for _ in range(BATCH_NUM)]
     with torch.no_grad():
         for num_iter in range(num_queries//BATCH_NUM):
             torch.cuda.empty_cache()
@@ -112,29 +124,27 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_
             queries_data = []
             for j in range(BATCH_NUM):
                 query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
-                query_inf, _, correct_answer, path = query_results
-                query, k_num = query_inf
-                query, entity_alias = form_alias_question(query, path, entity_aliases, relation_aliases, name2id, graph_algos)
+                query_inf, _, correct_id, ids_path = query_results
+                query, entity_alias, k_num = query_inf
+                query, entity_alias = form_alias_question(query, path, entity_aliases, relation_aliases, entity_name2id, relation_name2id, graph_algos)
+                path = [id2name[ids_path[i]] for i in range(len(ids_path))]
                 if 'country of' in query:
                     query = query.replace('country of', 'country location of') # to avoid ambiguity
                 all_queries.append(query)
                 add_keys = random.sample(all_keys, 1)
-                true_path = path.copy()
+                true_ids_path = ids_path.copy()
                 for key in add_keys:
-                    if key not in path:
-                        path.append(key)
-                random.shuffle(path)
+                    if key not in ids_path:
+                        ids_path.append(key)
+                random.shuffle(ids_path)
                 context = ""
-                for i, key in enumerate(path):
-                    if i == 0:
-                        all_aliases_text = f"{key} is also known as {entity_alias}."
-                    else:
-                        all_aliases_text = ''
-                    context += graph_text[key] + all_aliases_text + "\n"
-                prompt = f"Given the context: {context} Answer the query: {query}. Start with the answer in one word or phrase."
+                for i, key in enumerate(ids_path):
+                    context += graph_text[key] + "\n"
+                context += f"{id2name[true_ids_path[0]]} is also known as {entity_alias}."
+                prompt = f"Given the context: {context} Answer the query: {query}. Answer directly."
                 prompts.append(prompt)
-                queries_data.append({'query':query, 'correct_answer':correct_answer, 'path':true_path, 'context':context})
-            model_answers = query_vicuna_model(prompts, qa_model, tokenizer)
+                queries_data.append({'query':query, 'correct_answer':id2name[correct_id], 'path':path, 'context':context, 'correct_id':correct_id})
+            model_answers= query_vicuna_model(sys_prompts, prompts, qa_model)
             for i, model_ans in enumerate(model_answers):
                 model_ans = model_ans.strip()
                 model_answers[i] = model_ans
@@ -144,11 +154,11 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_
                 correct_answer = queries_data[i]['correct_answer']
                 path = queries_data[i]['path']
                 context = queries_data[i]['context']
-                model_ans = model_answers[i]
-                eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, name2id=name2id)
+                correct_id = queries_data[i]['correct_id']
+                eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_id)
                 results.append({ 'question':query, 'correct_answer':correct_answer, 'model_answer':model_ans, 
                                 'path':path, 'context':context, 'result':(eval_ans, None)})
-                print(correct_answer, model_ans, eval_ans)
+                print(correct_answer, model_ans, eval_ans, query, len(prompts[i]))
                 correct += results[-1]['result'][0]
                 total += 1
             print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
@@ -162,46 +172,47 @@ def experiment_pipeline(graph_algos, k=5, num_queries=5, graph_text=None, model_
             gc.collect()
         print(f'Completed {num_queries} queries, {correct} correct out of {total} total')
     return results, correct, total
-
 def main():
-    global qa_model, tokenizer, checker_llm
+    global qa_model, checker_host, checker_port, tokenizer
     args = get_args()
+    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=args.gpu_map)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph = json.load(open(args.context_graph_path))
     id2name = json.load(open(args.id2name_path))
-    name2id = {v:k for k,v in id2name.items()}
-    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=args.gpu_map)
-
-    if args.checker_llm == 'Gemini':
-        checker_llm = GeminiChecker()
-    else:
-        checker_llm = MistralChecker(args.checker_llm, args.checker_llm_device)
-    
+    checker_host, checker_port = args.host, args.port
     entity_aliases = load_aliases(args.entity_aliases_path)
     relation_aliases = load_aliases(args.relation_aliases_path)
 
     count = 0
     all_times = []
-    qa_graph_algos = GraphAlgos(qa_graph)
-    best_vertices = qa_graph_algos.get_best_vertices(num=1000)
+    qa_graph_algos = GraphAlgos(qa_graph, entity_aliases, relation_aliases)
+    # best_vertices = qa_graph_algos.get_best_vertices(num=1000)
+    best_vertices = ['Q312408', 'Q329988', 'Q5231203', 'Q900947', 'Q76508', 'Q546591', 'Q1793865', 'Q2062573', 'Q2090699', 'Q16264506', 'Q1928626', 'Q1251814', 'Q3740786', 'Q200482', 'Q375855', 'Q279164', 'Q2546120', 'Q229808', 'Q2502106', 'Q505788', 'Q212965', 'Q7958900', 'Q5981732', 'Q1124384', 'Q36033', 'Q679516', 'Q10546329', 'Q974437', 'Q20090095', 'Q36740', 'Q2805655', 'Q245392', 'Q1596236', 'Q946151', 'Q6110803', 'Q219776', 'Q211196', 'Q271830', 'Q1911276', 'Q1217787', 'Q115448', 'Q4351860', 'Q22', 'Q5669183', 'Q425992', 'Q3814812', 'Q1350705', 'Q1359838', 'Q451716', 'Q7901264', 'Q11458011', 'Q1995861']
     random.shuffle(best_vertices)
-    for i, vertex in enumerate(best_vertices):
+    already_done = ['Q1251814']
+    for file in os.listdir(args.results_dir):
+        idx = file.index('Q')
+        vertex_id = file[idx:-4]
+        already_done.append(vertex_id)
+
+    for i, vertex_id in enumerate(best_vertices):
+        vertex = id2name[vertex_id]
         start_time = time.time()
-        subgraph = qa_graph_algos.create_subgraph_within_radius(vertex, 4)
-        subgraph_algos = GraphAlgos(subgraph)
-        if len(subgraph) < 40:
+        subgraph = qa_graph_algos.create_subgraph_within_radius(vertex_id, 4)
+        subgraph_algos = GraphAlgos(subgraph, entity_aliases, relation_aliases)
+        if len(subgraph) < 30:
+            print(len(subgraph))
             continue
-        print(vertex, name2id[vertex])
+        print(vertex, vertex_id)
         expriment_results = experiment_pipeline(graph_algos=subgraph_algos, k=4, num_queries=args.num_queries, 
-                                                graph_text=context_graph, model_device=args.qa_llm_device, entity_aliases=entity_aliases, 
-                                                name2id=name2id, source=vertex, relation_aliases=relation_aliases)
+                                                graph_text=context_graph, entity_aliases=entity_aliases, 
+                                                source=vertex_id, relation_aliases=relation_aliases, id2name=id2name)
         end_time = time.time()
         print(f'Time taken for {vertex} = {end_time - start_time}')
         all_times.append(end_time - start_time)
-        with open(args.results_path[:-4]+str(name2id[vertex])+'.pkl', 'wb') as f:
+        with open(os.path.join(args.results_dir,str(vertex_id)+'.pkl'), 'wb') as f:
             pickle.dump(expriment_results, f)
         count += 1
-        break
     print(f'Average time = {np.mean(all_times)}')
 if __name__ == '__main__':
     main()

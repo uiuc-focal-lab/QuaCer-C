@@ -9,7 +9,7 @@ from utils import *
 checker_llm = None
 def get_args():
     parser = argparse.ArgumentParser('Run Subgraph experiments')
-    parser.add_argument('--checker_llm_device', type=str, default='cuda:3')
+    parser.add_argument('--checker_llm_device', type=str, default='cuda:2')
 
     return parser.parse_args()
 def process_request(data):
@@ -44,12 +44,18 @@ def main():
                     break
                 # Process the request
                 print('blocking...')
-                request_data = json.loads(data.decode('utf-8'))
-                response_data = process_request(request_data)
-                # Send response back to client
-                print('Sending response')
-                print(response_data)
-                conn.sendall(json.dumps(response_data).encode('utf-8'))
+                try:
+                    request_data = json.loads(data.decode('utf-8'))
+                    response_data = process_request(request_data)
+                    # Send response back to client
+                    print('Sending response')
+                    print(response_data)
+                    conn.sendall(json.dumps(response_data).encode('utf-8'))
+                except Exception as e:
+                    print(e)
+                    response_data = {}
+                    response_data['result'] = 0
+                    conn.sendall(json.dumps(response_data).encode('utf-8'))
 
 if __name__ == '__main__':
     args = get_args()

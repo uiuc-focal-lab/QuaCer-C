@@ -34,9 +34,11 @@ def sort_vertices_by_outdegree(graph):
     return sorted_vertices
 
 class GraphAlgos():
-    def __init__(self, graph: dict) -> None:
+    def __init__(self, graph: dict, entity_aliases:dict, relation_aliases:dict) -> None:
         all_vertices = set(graph.keys()) | {neighbor for neighbors in graph.values() for neighbor in neighbors.keys()}
         self.graph = {vertex: graph.get(vertex, {}) for vertex in all_vertices}
+        self.entity_aliases = entity_aliases
+        self.relation_aliases = relation_aliases
     def bfs(self, start):
         distances = {vertex: -float('infinity') for vertex in self.graph}
         distances[start] = 0
@@ -121,9 +123,14 @@ class GraphAlgos():
     def generate_query_for_path(self, path):
         query = "What is "
         for i in range(len(path) - 1, 1, -1):
-            query += f"the {self.get_relation_for_vertex(path[i-1], path[i])} of "
-        query += f"the {self.get_relation_for_vertex(path[0], path[1])} of {path[0]}?"
-        return query
+            rel = self.get_relation_for_vertex(path[i-1], path[i])
+            rel_alias = get_alias(rel, self.relation_aliases)
+            query += f"the {rel_alias} of "
+        rel = self.get_relation_for_vertex(path[0], path[1])
+        rel_alias = get_alias(rel, self.relation_aliases)
+        entity_alias = get_alias(path[0], self.entity_aliases)
+        query += f"the {rel_alias} of {entity_alias}?"
+        return query, entity_alias, len(path)
     
     def generate_query_for_vertices(self, start, end, k=5, path=None):
         #print(f"Generating query for {start} -> {end}")
@@ -131,7 +138,7 @@ class GraphAlgos():
             path = self.get_path_for_vertices(start, end, k)
         if path is None:
             return None
-        return self.generate_query_for_path(path), len(path)
+        return self.generate_query_for_path(path)
     
     def sample_random_vertex(self, vertex_list=None):
         if vertex_list is None:
@@ -282,17 +289,28 @@ def get_alias(id, aliases):
     aliases_choices = aliases[id]
     return random.choice(aliases_choices)
     
-def form_alias_question(question, path, entity_aliases, relation_aliases, name2id, graph_algos):
+def form_alias_question(question, path, entity_aliases, relation_aliases, entity_name2id, relation_name2id, graph_algos):
     entity_replace = path[0]
-    entity_id = name2id[entity_replace]
+    entity_id = entity_name2id[entity_replace]
     entity_alias = get_alias(entity_id, entity_aliases)
     entity_alias = unidecode(entity_alias)
     question = question.replace(entity_replace, entity_alias)
     for i in range(len(path)-1):
         relation_name = graph_algos.get_relation_for_vertex(path[i], path[i+1])
         relation_name = unidecode(relation_name).lower()
-        relation_id = name2id[relation_name]
-        relation_alias = get_alias(relation_id, relation_aliases)
+        try:
+            relation_id = relation_name2id[relation_name]
+            try:
+                relation_alias = get_alias(relation_id, relation_aliases)
+            except KeyError:
+                try:
+                    relation_alias = get_alias(relation_id, entity_aliases) #relations maybe entities too(eg. country)
+                except KeyError:
+                    relation_alias = relation_name
+                    print(f"Relation {relation_name, relation_id} not found in aliases using default")
+        except KeyError:
+            relation_alias = relation_name
+            print(f"Relation {relation_name} not found in name2id using default")
         relation_alias = unidecode(relation_alias)
         question = question.replace(relation_name, relation_alias)
 
