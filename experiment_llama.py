@@ -16,23 +16,23 @@ from llama_local import example_chat_completion as ecc
 import socket
 
 BATCH_NUM = 1
-qa_model = None
+qa_model, tokenizer = None, None
 checker_host, checker_port = None, None
+GPU_MAP = {0: "15GiB", 1: "15GiB", 2: "0GiB", 3: "150GiB", "cpu":"120GiB"}
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
     llama_path = os.getenv('LLAMA_PATH')
-    parser.add_argument('--qa_llm_path', type=str, default='meta-llama/Llama-2-13b-chat-hf')
+    parser.add_argument('--qa_llm_path', type=str, default='meta-llama/Llama-2-7b-chat-hf')
     parser.add_argument('--qa_graph_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_util.json')
     parser.add_argument('--context_graph_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_text.json')
-    parser.add_argument('--results_dir', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/16bit_llama13/')
+    parser.add_argument('--results_dir', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/16bit_llama7/')
     parser.add_argument('--entity_aliases_path', type=str, default='/home/vvjain3/rag-llm-verify/wikidata5m_entity.txt')
     parser.add_argument('--id2name_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_name_id.json')
     parser.add_argument('--relation_aliases_path', type=str, default='/home/vvjain3/rag-llm-verify/wikidata5m_relation.txt')
 
     parser.add_argument('--num_queries', type=int, default=1000)
 
-    parser.add_argument('--gpu_map', type=dict, default={0: "0GiB", 1: "25GiB", 2: "0GiB", 3: "32GiB", "cpu":"120GiB"})
     parser.add_argument('--host', type=str, default='localhost')
     parser.add_argument('--port', type=int, default=12345)
     return parser.parse_args()
@@ -102,7 +102,7 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
             prom.append({"role": "system", "content": sys_prompts[0]})
             prom.extend([{"role": "user", "content": f"""Given the context: {context} Answer the query: {query}. Start with the answer in one word or phrase, then explain."""}])
             input_ids = tokenizer.apply_chat_template(prom, return_tensors="pt")
-            input_ids = input_ids.to('cuda:1')
+            input_ids = input_ids.to('cuda:0')
             generated_ids= qa_model.generate(input_ids, max_new_tokens=80, pad_token_id=tokenizer.eos_token_id, do_sample=True, temperature=0.9, top_k=50, top_p=0.9, num_return_sequences=1)
             generated_ids = generated_ids[:, input_ids.shape[-1]:]
             decoded = tokenizer.batch_decode(generated_ids.detach().cpu(), skip_special_tokens=True, clean_up_tokenization_spaces=True)
@@ -121,7 +121,7 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
                 eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_id)
                 results.append({ 'question':query, 'correct_answer':correct_answer, 'model_answer':model_ans, 
                                 'path':path, 'context':context, 'result':(eval_ans, None)})
-                print(correct_answer, model_ans, eval_ans, query, len(prompts[i]))
+                print(correct_answer, model_ans, eval_ans, query)
                 correct += results[-1]['result'][0]
                 total += 1
             print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
@@ -134,9 +134,11 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
     return results, correct, total
 
 def main():
-    global qa_model, checker_host, checker_port
+    global qa_model, checker_host, checker_port, tokenizer
     args = get_args()
-    qa_model = AutoModelForCausalLM.from_pretrained(args.qa_llm_path, device_map='auto', max_memory=args.gpu_map, torch_dtype=torch.float16)
+    if not os.path.exists(args.results_dir):
+        os.mkdir(args.results_dir)
+    qa_model = AutoModelForCausalLM.from_pretrained(args.qa_llm_path, device_map='auto', max_memory=GPU_MAP, torch_dtype=torch.float16)
     tokenizer = AutoTokenizer.from_pretrained(args.qa_llm_path)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph = json.load(open(args.context_graph_path))
@@ -153,7 +155,7 @@ def main():
     qa_graph_algos = GraphAlgos(qa_graph, entity_aliases, relation_aliases)
     print('Running New')
     # best_vertices = qa_graph_algos.get_best_vertices(num=1000)
-    best_vertices = best_vertices = ['Q312408', 'Q329988', 'Q5231203', 'Q900947', 'Q76508', 'Q546591', 'Q1793865', 'Q2062573', 'Q2090699', 'Q16264506', 'Q1928626', 'Q1251814', 'Q3740786', 'Q200482', 'Q375855', 'Q279164', 'Q2546120', 'Q229808', 'Q2502106', 'Q505788', 'Q212965', 'Q7958900', 'Q5981732', 'Q1124384', 'Q36033', 'Q679516', 'Q10546329', 'Q974437', 'Q20090095', 'Q36740', 'Q2805655', 'Q245392', 'Q1596236', 'Q946151', 'Q6110803', 'Q219776', 'Q211196', 'Q271830', 'Q1911276', 'Q1217787', 'Q115448', 'Q4351860', 'Q22', 'Q5669183', 'Q425992', 'Q3814812', 'Q1350705', 'Q1359838', 'Q451716', 'Q7901264', 'Q11458011', 'Q1995861']
+    best_vertices = ['Q1251814', 'Q946151', 'Q2546120', 'Q2502106', 'Q245392', 'Q76508', 'Q7901264', 'Q1350705', 'Q451716', 'Q505788', 'Q271830', 'Q200482', 'Q2805655', 'Q115448', 'Q10546329', 'Q5669183', 'Q375855', 'Q1217787', 'Q2090699', 'Q279164', 'Q679516', 'Q1596236', 'Q1928626', 'Q22', 'Q16264506', 'Q1359838', 'Q2062573', 'Q3814812', 'Q425992', 'Q3740786', 'Q36740', 'Q1124384', 'Q36033', 'Q5981732', 'Q211196', 'Q212965', 'Q974437', 'Q219776', 'Q229808', 'Q1995861', 'Q1793865', 'Q20090095', 'Q546591', 'Q11458011', 'Q1911276', 'Q4351860', 'Q6110803', 'Q7958900']
     # random.shuffle(best_vertices)
     already_done = []
     for file in os.listdir(args.results_dir):

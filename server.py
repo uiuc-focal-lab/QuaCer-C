@@ -9,7 +9,7 @@ from utils import *
 checker_llm = None
 def get_args():
     parser = argparse.ArgumentParser('Run Subgraph experiments')
-    parser.add_argument('--checker_llm_device', type=str, default='cuda:2')
+    parser.add_argument('--checker_llm_device', type=str, default='cuda:1')
 
     return parser.parse_args()
 def process_request(data):

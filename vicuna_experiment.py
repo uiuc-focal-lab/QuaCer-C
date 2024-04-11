@@ -14,10 +14,17 @@ import torch
 import gc
 from llama_local import example_chat_completion as ecc
 import socket
+import gc
+import argparse
+import pickle
+import copy
+import os
+from fastchat.model import load_model, get_conversation_template, add_model_args
 
-BATCH_NUM = 2
+BATCH_NUM = 1
 qa_model = None
 checker_host, checker_port = None, None
+GPU_MAP = {0: "0GiB", 1: "20GiB", 2: "0GiB", 3: "20GiB", "cpu":"120GiB"}
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
@@ -31,7 +38,6 @@ def get_args():
 
     parser.add_argument('--num_queries', type=int, default=1000)
 
-    parser.add_argument('--gpu_map', type=dict, default={0: "25GiB", 1: "0GiB", 2: "0GiB", 3: "28GiB", "cpu":"120GiB"})
     parser.add_argument('--host', type=str, default='localhost')
     parser.add_argument('--port', type=int, default=12345)
     return parser.parse_args()
@@ -78,7 +84,7 @@ def load_model(model_name="lmsys/vicuna-13b-v1.5", only_tokenizer=False, gpu_map
         return tokenizer, None
 
 def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top_k=10, 
-                num_return_sequences=1, max_length=40, temperature=1.0):
+                num_return_sequences=1, max_length=80, temperature=1.0):
     
     # preprocess prompts:
     def update_ids(prompt):
@@ -89,7 +95,7 @@ def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top
         return prompt
 
     input_ids = [update_ids(p) for p in prompts]
-    input_ids = tokenizer(input_ids, return_tensors="pt", padding=True).to('cuda:0')
+    input_ids = tokenizer(input_ids, return_tensors="pt", padding=True).to('cuda:1')
     input_ids = input_ids.input_ids
     generated_ids = model.generate(
         input_ids,
@@ -108,7 +114,7 @@ def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top
     gc.collect()
     return decoded
 
-def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id, relation_name2id, source, relation_aliases, id2name, k=5, num_queries=5):
+def experiment_pipeline(graph_algos, graph_text, entity_aliases, source, relation_aliases, id2name, k=5, num_queries=5):
     global qa_model, tokenizer, checker_llm
     results = []
     correct = 0
@@ -126,7 +132,6 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
                 query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
                 query_inf, _, correct_id, ids_path = query_results
                 query, entity_alias, k_num = query_inf
-                query, entity_alias = form_alias_question(query, path, entity_aliases, relation_aliases, entity_name2id, relation_name2id, graph_algos)
                 path = [id2name[ids_path[i]] for i in range(len(ids_path))]
                 if 'country of' in query:
                     query = query.replace('country of', 'country location of') # to avoid ambiguity
@@ -141,10 +146,10 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
                 for i, key in enumerate(ids_path):
                     context += graph_text[key] + "\n"
                 context += f"{id2name[true_ids_path[0]]} is also known as {entity_alias}."
-                prompt = f"Given the context: {context} Answer the query: {query}. Answer directly."
+                prompt = f"Given the context: {context} Answer the query: {query}. Start with the answer in one word or phrase, then explain."
                 prompts.append(prompt)
                 queries_data.append({'query':query, 'correct_answer':id2name[correct_id], 'path':path, 'context':context, 'correct_id':correct_id})
-            model_answers= query_vicuna_model(sys_prompts, prompts, qa_model)
+            model_answers= query_vicuna_model(prompts, qa_model, tokenizer, temperature=0.9)
             for i, model_ans in enumerate(model_answers):
                 model_ans = model_ans.strip()
                 model_answers[i] = model_ans
@@ -175,7 +180,9 @@ def experiment_pipeline(graph_algos, graph_text, entity_aliases, entity_name2id,
 def main():
     global qa_model, checker_host, checker_port, tokenizer
     args = get_args()
-    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=args.gpu_map)
+    if not os.path.exists(args.results_dir):
+        os.mkdir(args.results_dir)
+    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph = json.load(open(args.context_graph_path))
     id2name = json.load(open(args.id2name_path))
@@ -187,7 +194,7 @@ def main():
     all_times = []
     qa_graph_algos = GraphAlgos(qa_graph, entity_aliases, relation_aliases)
     # best_vertices = qa_graph_algos.get_best_vertices(num=1000)
-    best_vertices = ['Q312408', 'Q329988', 'Q5231203', 'Q900947', 'Q76508', 'Q546591', 'Q1793865', 'Q2062573', 'Q2090699', 'Q16264506', 'Q1928626', 'Q1251814', 'Q3740786', 'Q200482', 'Q375855', 'Q279164', 'Q2546120', 'Q229808', 'Q2502106', 'Q505788', 'Q212965', 'Q7958900', 'Q5981732', 'Q1124384', 'Q36033', 'Q679516', 'Q10546329', 'Q974437', 'Q20090095', 'Q36740', 'Q2805655', 'Q245392', 'Q1596236', 'Q946151', 'Q6110803', 'Q219776', 'Q211196', 'Q271830', 'Q1911276', 'Q1217787', 'Q115448', 'Q4351860', 'Q22', 'Q5669183', 'Q425992', 'Q3814812', 'Q1350705', 'Q1359838', 'Q451716', 'Q7901264', 'Q11458011', 'Q1995861']
+    best_vertices = ['Q1251814', 'Q946151', 'Q2546120', 'Q2502106', 'Q245392', 'Q76508', 'Q7901264', 'Q1350705', 'Q451716', 'Q505788', 'Q271830', 'Q200482', 'Q2805655', 'Q115448', 'Q10546329', 'Q5669183', 'Q375855', 'Q1217787', 'Q2090699', 'Q279164', 'Q679516', 'Q1596236', 'Q1928626', 'Q22', 'Q16264506', 'Q1359838', 'Q2062573', 'Q3814812', 'Q425992', 'Q3740786', 'Q36740', 'Q1124384', 'Q36033', 'Q5981732', 'Q211196', 'Q212965', 'Q974437', 'Q219776', 'Q229808', 'Q1995861', 'Q1793865', 'Q20090095', 'Q546591', 'Q11458011', 'Q1911276', 'Q4351860', 'Q6110803', 'Q7958900']
     random.shuffle(best_vertices)
     already_done = ['Q1251814']
     for file in os.listdir(args.results_dir):

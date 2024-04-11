@@ -33,13 +33,65 @@ def sort_vertices_by_outdegree(graph):
     
     return sorted_vertices
 
+def sort_vertices_by_measure(graph, k, weights):
+    """
+    Sorts the vertices in the graph based on a custom measure. 
+
+    The measure considers the number of neighbors at different distances (up to k) and weights assigned to each distance.
+
+    :param graph: A dict of dicts representing the graph, where graph[node_start] = {node1: edge_weight, node2: edge_weight, ...}
+    :param k: The maximum distance to consider for neighbors.
+    :param weights: A dictionary mapping distances to weights.
+    :return: A list of vertices sorted by the calculated measure in descending order.
+    """
+    # Calculate the measure for each vertex
+    measure = {vertex : 0 for vertex in graph.keys()}
+    num_neighbors = {(vertex, 0): 1 for vertex in graph.keys()}
+    for i in range(1, k+1):
+        for vertex, ents_rels in graph.items():
+            key = (vertex, i)
+            total = 0
+            for neighbor in ents_rels.keys():
+                total += num_neighbors.get((neighbor, i-1), 1)
+            num_neighbors[key] = total
+    
+    for key, value in num_neighbors.items():
+        if key[1] <= 0:
+            continue
+        measure[key[0]] += (value/num_neighbors[(key[0], key[1]-1)]) * weights[key[1]]
+    # Sort vertices based on the measure
+    sorted_vertices = sorted(measure, key=measure.get, reverse=True)
+    
+    return sorted_vertices
+
 class GraphAlgos():
     def __init__(self, graph: dict, entity_aliases:dict, relation_aliases:dict) -> None:
+        """
+        Initializes the GraphAlgos object with the given graph and alias dictionaries.
+
+        :param graph: A dict of dicts representing the graph.
+        :param entity_aliases: A dictionary mapping entity IDs to lists of aliases.
+        :param relation_aliases: A dictionary mapping relation IDs to lists of aliases.
+        """
         all_vertices = set(graph.keys()) | {neighbor for neighbors in graph.values() for neighbor in neighbors.keys()}
         self.graph = {vertex: graph.get(vertex, {}) for vertex in all_vertices}
+        self.rel2ent_graph = {vertex: {rel:[]  for rel in neighbors.values()} for vertex, neighbors in graph.items()}
+        for vertex, neighbors in self.graph.items():
+            if vertex not in self.rel2ent_graph:
+                assert self.graph[vertex] == {}, f"Vertex {vertex} in graph but not in rel2ent_graph"
+                self.rel2ent_graph[vertex] = {}
+                continue
+            for neighbor, rel in neighbors.items():
+                self.rel2ent_graph[vertex][rel].append(neighbor)
         self.entity_aliases = entity_aliases
         self.relation_aliases = relation_aliases
     def bfs(self, start):
+        """
+        Performs Breadth-First Search (BFS) on the graph starting from the specified vertex.
+
+        :param start: The starting vertex for the BFS.
+        :return: A dictionary mapping vertices to their distances from the starting vertex.
+        """
         distances = {vertex: -float('infinity') for vertex in self.graph}
         distances[start] = 0
         queue = deque([start])
@@ -104,6 +156,14 @@ class GraphAlgos():
         return None
     
     def get_path_for_vertices(self, start, end, k=5):
+        """
+        Finds a path between two vertices in the graph using Breadth-First Search (BFS) with a limited depth.
+
+        :param start: The starting vertex for the path search.
+        :param end: The target ending vertex for the path.
+        :param k: The maximum depth to explore in the BFS (default: 5).
+        :return: A list of vertices representing the found path, or None if no path is found within the specified depth.
+        """
         #bfs search for k depth
         queue = deque([[start]])
         visited = set()
@@ -119,6 +179,31 @@ class GraphAlgos():
                     queue.append(new_path)
                 visited.add(vertex)
         return None
+    
+    def get_queries_for_relpath(self, rel_path: list, start_vertex: str) -> list:
+        """
+        Finds all possible paths in the graph that follow the given sequence of relations, starting from the specified vertex. 
+
+        This function recursively explores the graph, considering neighbors connected by the relations in the `rel_path` list.
+
+        :param rel_path: A list of relations representing the desired path.
+        :param start_vertex: The starting vertex for the path search.
+        :return: A list of lists, where each inner list represents a valid path found in the graph following the specified relations.
+        """
+        if len(rel_path) == 0:
+            return [[start_vertex]]
+        rel_use = rel_path[0]
+        neighbors = self.rel2ent_graph[start_vertex].get(rel_use, [])
+        if len(neighbors) == 0:
+            return []
+        possible_paths = []
+        for neighbor in neighbors:
+            possible_neighbor_paths = self.get_queries_for_relpath(rel_path[1:], neighbor)
+            if len(possible_neighbor_paths) == 0:
+                continue
+            for path in possible_neighbor_paths:
+                possible_paths.append([start_vertex] + path)
+        return possible_paths
     
     def generate_query_for_path(self, path):
         query = "What is "
@@ -146,6 +231,16 @@ class GraphAlgos():
         return random.choice(vertex_list)
     
     def generate_random_path(self, path_len=25, source=None):
+        """
+        Generates a random path in the graph with the specified length.
+
+        The generated path attempts to be unique, meaning there should be only one possible path 
+        corresponding to the sequence of relations in the path.
+
+        :param path_len: The desired length of the path.
+        :param source: (Optional) The starting vertex for the path. If not provided, a random vertex is chosen.
+        :return: A list of vertices representing the generated path, or None if a unique path cannot be found within 500 attempts. 
+        """
         path = None
         i = 0
         while path is None and i < 500:
@@ -154,10 +249,54 @@ class GraphAlgos():
             else:
                 start = source
             path = self.dfs_path(start, path_len)
+            #check if path in unique
+            if path is not None:
+                rel_path = [self.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
+                # if len(self.rel2ent_graph[path[-2]][rel_path[-1]]) > 1:
+                #     path = None #answer should be unique
+                #     continue
+                possible_paths = self.get_queries_for_relpath(rel_path, start)
+                assert len(possible_paths) > 0, f"No possible paths found for {start} -> {path[-1]}"
+                if len(possible_paths) > 1:
+                    path = None #not unique
             i += 1
         return path
     
+    def get_best_distractor(self, start_vertex, path):
+        """
+        Gets the best distractor vertex for a given path.
+        Assumes that the path is unique. If the path is not unique, the behavior is undefined.
+        """
+        rel_path = [self.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
+        best_distractor = None
+        all_distractors_pos = []
+        distractor_weights = []
+        for i in range(len(rel_path)-2, -1, -1):
+            cur_vertex = path[i]
+            neighbors = self.rel2ent_graph[cur_vertex].get(rel_path[i], [])
+            if len(neighbors) == 0:
+                continue
+            pos_distractors = [neighbor for neighbor in neighbors if neighbor not in path]
+            for distractor in pos_distractors:
+                all_distractors_pos.append(distractor)
+                distractor_weights.append(i+1)
+        if len(all_distractors_pos) > 0:
+            best_distractor_index = random.choices(range(len(all_distractors_pos)), weights=distractor_weights, k=1)[0]
+            # print(f"Best Distractor Weight: {distractor_weights[best_distractor_index]}")
+            best_distractor = all_distractors_pos[best_distractor_index]
+        if best_distractor is not None:
+            assert best_distractor not in path, f"Best distractor {best_distractor} is in path {path}"
+        return best_distractor
+    
     def generate_random_query(self, k=5, return_path=False, source=None):
+        """
+        Generates a random query by sampling a random path in the graph.
+
+        :param k: The maximum path length.
+        :param return_path: If True, returns the path used to generate the query.
+        :param source: Optional starting vertex for the path.
+        :return: A tuple containing the generated query, starting vertex, correct answer(s), and optionally the path.
+        """
         path_len = random.randint(1, k)
         path = self.generate_random_path(path_len, source)
         if path is None:
@@ -165,9 +304,12 @@ class GraphAlgos():
         # print(f"Query Path: {str(path[start_idx:path.index(end)+1])}")
         start = path[0]
         end = path[-1]
+        rel_correct = self.get_relation_for_vertex(path[-2], path[-1])
+        # print(rel_correct, "rel correct")
+        correct_answers = self.rel2ent_graph[path[-2]][rel_correct]
         if return_path:
-            return self.generate_query_for_vertices(start, end, k, path), start, end, path
-        return self.generate_query_for_vertices(start, end, k, path), start, end, None
+            return self.generate_query_for_vertices(start, end, k, path), start, correct_answers, path
+        return self.generate_query_for_vertices(start, end, k, path), start, correct_answers, None
     
     def create_subgraph_within_radius(self, start_vertex, k):
         """
@@ -199,14 +341,31 @@ class GraphAlgos():
                     # Add the neighbor to the subgraph with the corresponding edge weight
                     if level + 1 <= k:
                         subgraph[current_vertex][neighbor] = weight
-                        if neighbor not in subgraph:
-                            subgraph[neighbor] = {}
-                        subgraph[neighbor][current_vertex] = weight  # Include reverse edge for undirected graph
                         
         return subgraph
-    def get_best_vertices(self, num=1000):
+    def get_best_vertices(self, num=1000, method='outdegree', **kwargs):
+        """
+        Gets the best vertices from the graph based on the specified method.
+        :param num: The number of vertices to return.
+        :param method: The method to use for selecting the best vertices. Supported methods are:
+            - 'outdegree': Selects vertices with the highest outdegree.
+            - 'measure': Selects vertices based on a custom measure considering neighbor distances and weights.
+        :param kwargs: Additional keyword arguments for the chosen method. 
+            For 'measure':
+                - k (int, optional): The maximum distance to consider for neighbors (default: 4).
+                - weights (dict, optional): A dictionary mapping distances to weights (default: {1: 0.75, 2: 1.25, 3: 1, 4: 0.25}).
+        :return: A list of the best vertices, sorted according to the chosen method.
+        :raises ValueError: If an unsupported method is specified.
+        """
         graph_copy = self.graph.copy()
-        vertices_out = sort_vertices_by_outdegree(graph_copy)
+        if method == 'outdegree':
+            vertices_out = sort_vertices_by_outdegree(graph_copy)
+        elif method == 'measure':
+            k = kwargs.get('k', 4)
+            weights = kwargs.get('weights', {1: 0.75, 2: 1.25, 3: 1, 4: 0.25})
+            vertices_out = sort_vertices_by_measure(graph_copy, k, weights)
+        else:
+            raise ValueError(f"Method {method} not supported")
         return vertices_out[:num]
 
 class GeminiChecker():
@@ -249,6 +408,13 @@ class GeminiChecker():
 
 class MistralChecker():
     def __init__(self, model_path, device='cuda:1') -> None:
+        """
+        Checks the correctness of a model answer using the Mistral language model.
+
+        :param prompt: The prompt containing the question, ground truth answer, and model answer.
+        :param return_response: If True, returns the raw response from Mistral.
+        :return: A tuple containing 1 if the answer is correct, 0 otherwise, and optionally the raw response from Mistral.
+        """
         self.device = device
         self.model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16).to(self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -286,10 +452,22 @@ class MistralChecker():
         return self.checker(prompt, return_response)
 
 def get_alias(id, aliases):
+    """
+    Retrieves a random alias for the given ID from the provided aliases dictionary.
+
+    :param id: The ID for which to retrieve an alias.
+    :param aliases: A dictionary mapping IDs to lists of aliases.
+    :return: A randomly chosen alias from the list associated with the ID.
+    """
     aliases_choices = aliases[id]
     return random.choice(aliases_choices)
     
 def form_alias_question(question, path, entity_aliases, relation_aliases, entity_name2id, relation_name2id, graph_algos):
+    """
+    Transforms a question by replacing entities and relations with their aliases.
+
+    Redundant, Not being used because of errors in name2id
+    """
     entity_replace = path[0]
     entity_id = entity_name2id[entity_replace]
     entity_alias = get_alias(entity_id, entity_aliases)
@@ -317,6 +495,12 @@ def form_alias_question(question, path, entity_aliases, relation_aliases, entity
     return question, entity_alias
 
 def load_aliases(path):
+    """
+    Loads aliases from a file.
+
+    :param path: The path to the file containing aliases.
+    :return: A dictionary mapping entity/relation IDs to lists of aliases. 
+    """
     possible_entities = {}
     with open(path, 'r') as f:
         for line in f:
