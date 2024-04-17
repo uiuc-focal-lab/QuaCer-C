@@ -49,7 +49,6 @@ abstract_vicuna1/
 llama7b/
 llama_env1/
 16bit_vicuna/
-mistral_experiment1.py
 temp.txt
 kg_analyse.ipynb
 analyse_results.ipynb
@@ -73,3 +72,4 @@ vicuna_13b_20sampled/
 wikidata_graphs1/
 final_results_ids_df_with_samples.pkl
 final_results_ids_with_samples.pkl
+important/
