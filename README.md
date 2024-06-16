@@ -17,8 +17,9 @@ This work introduces a method to **certify the comprehension of knowledge by LLM
 **Certification Process:**
 
 1. **Knowledge Graph:** We use a preprocessed Wikidata5m knowledge graph for generating questions.
-2. **Path Selection & Prompt Construction:** Random paths are selected from the graph to create challenging questions.
-3. **Response Validation & Certification:** LLM responses are evaluated for correctness, and a comprehension score is calculated.
+2. **Pivot Node Certificates:** We select a pivot node to provide a certificate for by selecting queries based on this node.
+3. **Path Selection & Prompt Construction:** Random paths are selected from the subgraph of the pivot node to create challenging reasoning based questions.
+4. **Response Validation & Certification:** LLM responses are evaluated for correctness, and a confidence interval is calculated.
 
 ![Certification Process](image.png)
 *Overview of our knowledge comprehension certifier. (a) A knowledge graph G pivoted on
