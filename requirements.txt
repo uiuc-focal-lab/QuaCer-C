@@ -1,0 +1,7 @@
+transformers
+numpy
+statsmodels
+unidecode
+torch
+fastchat
+accelerate

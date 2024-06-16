@@ -18,6 +18,43 @@ import torch
 import gc
 from unidecode import unidecode
 
+FEW_SHOT_EXAMPLES = """
+Example questions and correct answers:
+Common Context: entity_B is the son of entity_A. entity_E is the sister of entity_A. entity_B leads entity_C. Entity_D is a member of Entity_C. Entity_D is a friend of entity_E. entity_E has mother entity_F who likes the services of entity_C.
+question 1: entity_A(father of)(land of)?
+answer: entity_A (father of) entity_B (leader of) entity_C
+So, the final answer is entity_C
+how to get answer: find who entity_A is father of to get entity_B, then find what B is the leader of to get entity_C which the final answer.
+
+question 2: entity_B(chief of)(constitues)(companion of)?
+answer: entity_B (chief of) entity_C (constitues)entity_D(companion of) entity_E
+So, the final_answer is Entity_E
+how to get answer: find what entity_B is the chief of to get entity_C, find what entity_C constitutes of to get entity_D, then find the companion of entity_D is the land of to get entity_E.
+"""
+
+LLM_PROMPT_TEMPLATE = """
+{few_shot_examples}
+
+Actual Data:
+Given Context:
+{context}
+
+Answer the question:
+{query}
+
+answer the query in a short sentence
+"""
+
+CHECKER_INITIAL_PROMPT = f"""
+You are a correct answer evaluator. Your inputs will consist of a question and a correct answer, and a answer from a model.
+The questions will be of the form:
+{FEW_SHOT_EXAMPLES}
+
+Your response should start with 'correct' or 'wrong' based on whether the model's answer means the correct answer in both technical and semantic terms.
+
+Start response with 'correct' or 'wrong' only and nothing else. Then explain the reasons.
+"""
+
 def sort_vertices_by_outdegree(graph):
     """
     Sorts the vertices in the graph based on their outdegree in descending order.
@@ -206,15 +243,32 @@ class GraphAlgos():
         return possible_paths
     
     def generate_query_for_path(self, path):
-        query = "What is "
-        for i in range(len(path) - 1, 1, -1):
-            rel = self.get_relation_for_vertex(path[i-1], path[i])
+        def query_path_aux(path):
+            if len(path) == 1:
+                entity_alias = get_alias(path[0], self.entity_aliases)
+                # print(f"Entity Alias Found: {entity_alias}")
+                return entity_alias, entity_alias
+            
+            rel = self.get_relation_for_vertex(path[-2], path[-1])
             rel_alias = get_alias(rel, self.relation_aliases)
-            query += f"the {rel_alias} of "
-        rel = self.get_relation_for_vertex(path[0], path[1])
-        rel_alias = get_alias(rel, self.relation_aliases)
-        entity_alias = get_alias(path[0], self.entity_aliases)
-        query += f"the {rel_alias} of {entity_alias}?"
+            rest_query, entity_alias = query_path_aux(path[:-1])
+            # rel_alias_clean = rel_alias.strip().lower()
+            # if rel_alias_clean.endswith('of' ):
+            #     rel_alias_add = rel_alias_clean[:-2]
+            #     query = f"that which has {rel_alias_add} {rest_query}"
+            #     print(f"Query: {query}, Entity: {entity_alias}, Rel: {rel_alias}, Path: {path}, Rest Query: {rest_query}")
+            #     return query, entity_alias
+            # else:
+            #     query = f"the {rel_alias} of {rest_query}"
+            #     print(f"NOT OF Query: {query}, Entity: {entity_alias}, Rel: {rel_alias}, Path: {path}, Rest Query: {rest_query}")
+            #     return query, entity_alias
+            query = f"{rest_query} ({rel_alias}) "
+            return query, entity_alias
+            
+        query = ""
+        rest_query, entity_alias = query_path_aux(path)
+        query += rest_query + '?'
+        # print('Complete path query:', query, 'path:', path)
         return query, entity_alias, len(path)
     
     def generate_query_for_vertices(self, start, end, k=5, path=None):
@@ -278,7 +332,7 @@ class GraphAlgos():
                 continue
             pos_distractors = [neighbor for neighbor in neighbors if neighbor not in path]
             for distractor in pos_distractors:
-                all_distractors_pos.append(distractor)
+                all_distractors_pos.append((distractor, cur_vertex))
                 distractor_weights.append(i+1)
         if len(all_distractors_pos) > 0:
             best_distractor_index = random.choices(range(len(all_distractors_pos)), weights=distractor_weights, k=1)[0]
@@ -429,19 +483,20 @@ class MistralChecker():
         ity? Ground Truth: England. Model Answer: British"
         returns 1 for yes 0 for no and response if return response = True
         """
+        
         messages = [
-            {"role": "user", "content": "context: You are an honest and fair correct answer evaluator. Your inputs will consist of a question and a correct answer, and a answer from a model. Your response should start with a single word either a yes if the model's answer means the same as correct answer technically and semantically, else the starting word should be no."},
-            {"role": "assistant", "content": "Okay, I will ensure technical and semantic correctness of model answers."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": f"{CHECKER_INITIAL_PROMPT}"},
+            {"role": "assistant", "content": f"Okay, I will evaluate the correctness of the answers and the reasoning of the model_answer with respect to the correct answers technically and semantically."},
+            {"role": "user", "content": f"Evaluate Input data: [{prompt}] "}
         ]
         encodeds = self.tokenizer.apply_chat_template(messages, return_tensors="pt")
 
         model_inputs = encodeds.to(self.device)
-        generated_ids = self.model.generate(model_inputs, max_new_tokens=1, do_sample=False, pad_token_id=self.tokenizer.eos_token_id, temperature=0.0)
+        generated_ids = self.model.generate(model_inputs, max_new_tokens=2, do_sample=False, pad_token_id=self.tokenizer.eos_token_id, temperature=0.0)
         decoded = self.tokenizer.batch_decode(generated_ids[:, model_inputs.size(1):])
+        print(decoded)
         decoded = str(decoded[0]).strip().lower().strip()
-
-        correct_ans = int('yes' in decoded)
+        correct_ans = int('correct' in decoded)
         del model_inputs, generated_ids
         if return_response:
             return correct_ans, decoded
@@ -509,3 +564,18 @@ def load_aliases(path):
             line = [x.strip() for x in line]
             possible_entities[line[0]] = line[1:]
     return possible_entities
+
+def form_context_list(query_path, wikidata_text_edge):
+    context_list = []
+    for i in range(len(query_path)-1):
+        source, dest = query_path[i], query_path[i+1]
+        if dest not in wikidata_text_edge[source]:
+            print(source, dest)
+            return None
+        context_list.append(wikidata_text_edge[source][dest])
+        # print(f"for {wikidata_name_id[source]} to {wikidata_name_id[dest]} we have {wikidata_text_edge[source][dest]}")
+    return context_list
+    # random.shuffle(context_list)
+    # context = '\n'.join(context_list)
+    # context += f" {wikidata_name_id[query_path[0]]} is also known as {entity_alias}."
+    # return context

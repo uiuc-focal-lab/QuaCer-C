@@ -1,13 +1,26 @@
 # Quantitative Certification of Knowledge Comprehension in LLMs
 
-This code contains checkpoints and training code for the following work:
+This repository contains code and resources for certifying knowledge comprehension abilities of Large Language Models (LLMs) during in-context learning, based on the paper **"Quantitative Certification of Knowledge Comprehension in LLMs."**
 
-* **Quantitative Certification of Knowledge Comprehension in LLMs**
+[![arXiv](https://img.shields.io/badge/arXiv-2402.15929-b31b1b.svg)](https://arxiv.org/abs/2402.15929)
 
 ## Overview
-- This work aims to certify the knowledge comprehension ability of LLMs during in-context learning.
-- The certification is summarized in the figure below:
-![hello](image.png)
+
+This work introduces a method to **certify the comprehension of knowledge by LLMs using a quantitative approach.**  We leverage a knowledge graph to generate questions, evaluate LLM responses against ground truth, and provide a measure of comprehension based on their performance.
+
+**Key Features:**
+
+- **Knowledge Graph Driven:** Utilizes a filtered Wikidata5m knowledge graph for realistic and diverse question generation.
+- **Quantitative Certification:** Provides a measurable and interpretable score of knowledge comprehension.
+- **Flexible and Extensible:** Easily adaptable to different LLMs and knowledge domains.
+
+**Certification Process:**
+
+1. **Knowledge Graph:** We use a preprocessed Wikidata5m knowledge graph for generating questions.
+2. **Path Selection & Prompt Construction:** Random paths are selected from the graph to create challenging questions.
+3. **Response Validation & Certification:** LLM responses are evaluated for correctness, and a comprehension score is calculated.
+
+![Certification Process](image.png)
 *Overview of our knowledge comprehension certifier. (a) A knowledge graph G pivoted on
 some node, in this case the ’Paul Sophus Epstein’. (b) A randomly chosen path originating at the
 pivot node from the various possibilities in G. (c) A prompt created by our prompt constructor using
@@ -17,219 +30,156 @@ using the response checker. (e) Certifier obtains bounds on the probability of c
 we iterate till the range of the bounds falls below a threshold. (f) The final bounds contained in the
 certificate.*
 
-- We use a distilled version of Wikidata5m as a base knowledge graph for our experiments.
+## Getting Started
 
-- For each model architecture we test(Mistral, Vicuna, Llama), we provide a separate python script to run experiments on the model. The scripts contain code to generate queries from the knowledge graph and get LLM response as well as check the answer. The utils.py file provides some common functionality and the functions are described in detail in utilsREADME.md file.
+### Prerequisites
 
-### Setup
 
-**Dependencies**
+- **Python 3.7+**
+- **Required Packages:**
+  ```bash
+  pip install -r requirements.txt
+  ```
+- **GPU:** For running the experiments.
 
-* Python 3.x
-* transformers
-* numpy
-* statsmodels
-* unidecode
-* genai (if using Gemini checker)
-* torch
-* fastchat
-* accelerate
-* llama2 repository and model weights
-* Environment variable `GOOGLE_API_KEY` (if using Gemini checker)
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/uiuc-focal-lab/QuaCer-C.git
+   cd QuaCer-C
+   ```
+
+2. **Download Wikidata5m Filtered Data:**
+- You can get the related files here: [(google drive)](https://drive.google.com/drive/folders/1q3ELIwexfTiW1mVSJTlQez_6Gvp5Pd9X?usp=sharing)
+
+- **[Optional] Generate Knowledge Graph Files:** 
+    - If you prefer to generate the knowledge graph files yourself, you can use the `wikidata_make.py` script. Refer to the script for detailed instructions.
+- **File Descriptions:**
+    - **`wikidata_util.json`:** Stores the filtered knowledge graph with Wikidata IDs in the following format:
+        ```json
+        graph = {
+            'vertex1': {'vertex2': 'relation1', 'vertex3': 'relation2'},
+            ...
+        }
+        ```
+    - **`wikidata5m_text_edge.json`:** Stores the context for each edge in the knowledge graph:
+        ```json
+        graph = {
+            'vertex1': {'vertex2': ['sent_1', 'sent_2', ...], 'vertex3': ['sent_4', 'sent_5', ...]},
+            ...
+        }
+        ```
+    - **`wikidata5m_name_id_uni.json`:** Stores the dictionary mapping between English entity/relation names and Wikidata IDs for easy access:
+        ```json
+        graph = {
+            'vertex1': 'vertex1id', 
+            'relation1': 'relation1id',
+            ...
+        }
+        ```
+- Please refer to `wikidata_make.py` to see how these files were processed.
 
 **Environment Setup**
 
-1. **Install Packages:** `pip install transformers numpy statsmodels unidecode genai torch fastchat accelerate`
-2. For **LLaMA2**: follow instructions at https://github.com/facebookresearch/llama. Clone the repository as llama_local for use with existing scripts or modify the import statements in the llama2 script accordingly.
-3. Add environment variable 'LLAMA_PATH' which is the folder where the llama2 weights and tokenzier and stored, you can also pass in the full path if required to run the scripts.
-4. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
+1. **Install Packages:** 
+```bash
+pip install transformers numpy statsmodels unidecode genai torch fastchat accelerate
+```
+
+2. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
 
 ### Wikidata5m Filtered:
 - You can get the related files here: insert_link [(google drive)](https://drive.google.com/drive/folders/1q3ELIwexfTiW1mVSJTlQez_6Gvp5Pd9X?usp=sharing)
-- You can also generated the kg files using the wikidata5m.ipynb notebook.
-- *wikidata5m_en_util_unidecoded.json*: stores the filtered knowledge graph with english names in the format: 
+- You can also generated the kg files using the wikidata_make.py file.
+- *wikidata_util.json*: stores the filtered knowledge graph with wikidata IDs in the format: 
 `
     graph = {'vertex1': {'vertex2': 'relation1', 'vertex3': 'relation2'},
     ...}
 `
-- *wikidata5m_en_unidecoded.json*: stores the filtered knowledge graph with english names in the format: 
+- *wikidata5m_text_edge.json*: stores the context for each edge in knowledge graph in the format: 
 `
-    graph = {'vertex1': {'relation1': 'vertex2', 'relation2': 'vertex3'},
+    graph = {'vertex1': {'vertex2': list[sent_1, sent_2, ...], 'vertex3': list[sent_4, sent_5, ...]},
     ...}
 `
-- *wikidata5m_unidecoded.json*: stores the filtered knowledge graph with wikidata ids in the format: 
-`
-    graph = {'vertex1': {'relation1': 'vertex2', 'relation2': 'vertex3'},
-    ...}
-`
-- *wikidata5m_en_text.json*: stores the context for each entity with its english name as key: 
-`
-    graph = {'vertex1': 'abstract_v1', 'vertex2':'abstract_v2'
-    ...}
-`
+
 - *wikidata5m_name_id_uni.json*: stores the dictionary between english entity/relation names and wikidata ids for easy access: 
 `
     graph = {'vertex1': 'vertex1id', 'relation1', 'relation1id',
     ...}
 `
-- The notebook that took the raw kg wikidata5m to get the filtered versions is wikidata5m.ipynb.
+- Please look at wikidata_make.py to see how they were processed.
 
-### Experiment With Vicuna
-**How to Run the Experiment**
+## Running Experiments
 
-```bash
-python vicuna_experiment.py --qa_llm [QA Model path on huggingface] --checker_llm [Checker Model path on huggingface] --num_queries [Number of Max Queries] --[Other Optional Arguments]
-```
+### 1. Answer Checker Server
 
-**Example**:
-```bash
-python vicuna_texperiment.py --qa_llm lmsys/vicuna-7b-v1.5 --checker_llm mistralai/Mistral-7B-Instruct-v0.2 --num_queries 1000
-```
+This experiment requires a separate answer checker server (e.g., Mistral or Gemini). We recommend using our provided `server.py` for easy setup.
 
-**Experiment Results**
-The script saves results as pickle files (.pkl) with the entity ID of the pivot of the subgraph. These contain detailed information for further analysis.
-
-**Key Functions**
-
-* **`load_model()`** Loads the QA and (optionally) the checker language models.
-* **`simple_checker()`** A basic answer-checking function using string matching and aliases.
-* **`check_answer()`** Comprehensive correctness checker that can use either the `simple_checker` or an external checker model.
-* **`query_vicuna_model()`** Handles question answering using the specified LLM.
-* **`experiment_pipeline()`** The core function that executes the experimental loop.
-
-##### Argument Descriptions
-
-* --qa_llm (str): Path or name of the QA language model.
-* --checker_llm (str): Path or name of the checker language model (Mistral or Gemini).
-* --qa_graph_path (str): Path to the JSON file containing the knowledge graph for question answering.
-* --context_graph_path (str): Path to the JSON file containing textual descriptions for graph entities.
-* --qa_llm_device (str): Device to use for the QA model ('cuda:1', etc.)
-* --checker_llm_device (str): Device for the checker model.
-* --results_path (str):  Where to save experimental results. 
-* --entity_aliases_path (str), --id2name_path (str),
-
-* --relation_aliases_path (str): Paths to the respective data files.
-* --num_queries (int): The total number of questions to generate in the experiment. 
-* --gpu_map (dict): Specify desired memory allocation for each device.
-
-### Experiment with Mistral
-
-**How to Run the Experiment**
-
-```bash
-python mistral_experiment.py --num_queries [Number of Max Queries] --[Other Optional Arguments]
-```
-
-**Example**:
-```bash
-python mistral_experiment.py --num_queries 1000 
-```
-
-**Experiment Results**
-The script saves results as pickle files (.pkl) with the entity ID of the pivot of the subgraph (e.g., `exp7b_Q12345.pkl`). These files contain detailed information for further analysis.
-
-**Key Functions**
-
-* **`get_args()`** Parses command-line arguments for experiment configuration.
-* **`simple_checker()`** A basic answer-checking function using string matching and aliases.
-* **`check_answer()`** Comprehensive correctness checker that can use either the `simple_checker` or an external checker model (like Mistral).
-* **`experiment_pipeline()`** The core function that executes the experimental loop.  This includes:
-    * Generating questions from the knowledge graph.
-    * Using the specified QA model to get answers.
-    * Evaluating answer correctness using the checker. 
-
-**Argument Descriptions**
-
-* **--qa_llm (str):** Path or name of the QA  language model (default: `mistralai/Mistral-7B-Instruct-v0.2`).
-* **--checker_llm (str):** Path or name of the checker language model (default: `mistralai/Mistral-7B-Instruct-v0.2`).
-* **--qa_graph_path (str):** Path to the JSON file containing the knowledge graph for question answering.
-* **--context_graph_path (str):** Path to the JSON file containing textual descriptions for graph entities.
-* **--qa_llm_device (str):** Device to use for the QA model ('cuda:1', etc.). Default is 'cuda:1'.
-* **--checker_llm_device (str):** Device to use for the checker model (default: 'cuda:3').
-* **--results_path (str):** Where to save experimental results. 
-* **--entity_aliases_path (str), --id2name_path (str), --relation_aliases_path (str):** Paths to the respective data files.
-* **--num_queries (int):** The total number of questions to generate in the experiment.
-
-### Experiment with llama2
-
-**Prerequisites**
-
-* **Checker Server:** This experiment requires a separate answer checker server (e.g., Mistral or Gemini) already running.  You can use `server.py` (if provided) to set this up.
-* **LLaMA2 Model:** The code assumes you have the LLaMA model files downloaded.
-
-**How to Run the Experiment**
-
-1. **Start the Checker Server:** Follow the instructions for your checker server to start it on your local machine. Note the host and port it's running on.
-
-2. **Run the Experiment Script:** 
    ```bash
-   torchrun --nproc_per_node [num_nodes] llama_experiment.py --host [checker_host] --port [checker_port] --num_queries [Number of Max Queries] --[Other Optional Arguments]
+   python server.py [--checker_llm_device device] 
    ```
-   * Replace `[checker_host]` and `[checker_port]` with the actual values where your checker server is reachable. 
 
-**Example:**
-```bash
-torchrun --nproc_per_node 1 llama_experiment.py --host localhost --port 12345 --num_queries 1000
-```
+   - **Optional:** Replace `device` with your desired device (e.g., 'cuda:0').
+   - The server will listen on port 12345 (configurable). 
 
-**Experiment Results**
-The script saves results as pickle files (.pkl) with the entity ID of the pivot of the subgraph (e.g., `exp_Q12453.pkl`). These files contain detailed information for further analysis.
+### 2. Main Experiments
 
-**Key Functions**
+Use the provided experiment scripts to evaluate different LLMs:
 
-* **`get_args()`** Parses command-line arguments for experiment configuration.
-* **`simple_checker()`** A basic answer-checking function using string matching and aliases.
-* **`check_answer()`** Sends a question, reference answer, and model-generated answer to the external checker server to get a correctness evaluation.
-* **`build_llama()`**  Loads the LLaMA model.
-* **`query_llama_model()`** Handles question answering using the LLaMA model.
-* **`experiment_pipeline()`** The core function that executes the experimental loop, generating questions and getting answers from LLaMA.
+   ```bash
+   python vicuna_experiment.py \
+       --qa_llm mistralai/Mistral-7B-Instruct-v0.2 \
+       --qa_graph_path data/wikidata_util.json \
+       --context_graph_edge_path data/wikidata_text_edge.json \
+       --results_dir results/mistral_distractorfull/ \
+       --entity_aliases_path data/wikidata5m_entity.txt \
+       --id2name_path data/wikidata_name_id.json \
+       --relation_aliases_path data/wikidata5m_relation.txt \
+       --distractor_query \ 
+       --num_queries 1000 \
+       --host localhost \
+       --port 12345
+   ```
+   
+   - **Adjust arguments:** Modify the script arguments (see "Argument Descriptions" below) to use different data paths, and experimental settings.
+   - **Other LLM scripts:**  Refer to the `mistral_experiment.py` and `llama_experiment.py` scripts for evaluating other models.
 
-**Argument Descriptions**
+### Argument Descriptions
 
-* **--qa_llm_path (str):** Path to the LLaMA model files.
-* **--tokenizer_path (str):** Path to the LLaMA tokenizer.
-* **--qa_graph_path (str):** Path to the JSON file containing the knowledge graph for question answering.
-* **--context_graph_path (str):** Path to the JSON file containing textual descriptions for graph entities.
-* **--results_path (str):** Where to save experimental results. 
-* **--entity_aliases_path (str), --id2name_path (str), --relation_aliases_path (str):** Paths to the respective data files.
-* **--num_queries (int):** The total number of questions to generate in the experiment. 
-* **--host (str):** The hostname where your checker server is running (default: `localhost`).
-* **--port (int):** The port where your checker server is listening (default: `12345`).
+- **--qa_llm (str):**  Path or identifier of the question-answering LLM.
+- **--qa_graph_path (str):** Path to the knowledge graph JSON file.
+- **--context_graph_edge_path (str):**  Path to the context descriptions JSON file.
+- **--results_dir (str):**  Directory to save experiment results.
+- **--entity_aliases_path (str):** Path to the entity aliases text file.
+- **--id2name_path (str):** Path to the Wikidata ID to name mapping JSON file.
+- **--relation_aliases_path (str):** Path to the relation aliases text file.
+- **--distractor_query:** Flag to enable distractor queries.
+- **--num_queries (int):** Number of queries to generate.
+- **--host (str):** Hostname of the checker server.
+- **--port (int):** Port of the checker server.
 
-Absolutely! Here's a small README for `server.py`:
+## Results
 
-**server.py for llama2 experiments**
+- Experiment results are saved as pickle files (.pkl) in the specified `results_dir`. 
+- Each file corresponds to a subgraph's pivot entity and contains detailed information for further analysis.
 
-* **Purpose**
+## Evaluating the Checker
 
-    This script sets up a server that acts as an answer correctness checker. It's designed to serve as a means to check for answers for llama2 responses. This is designed to run the MistralChecker.
+- The `checker_mistral_evaluate.ipynb` notebook provides a detailed evaluation of the MistralChecker.
+- Refer to the appendix of the paper for more information on evaluating the checker's performance.
 
-* **How to Run**
+## Citation
 
-    1. **Start the Server:**
-    ```bash 
-    python server.py [--checker_llm_device device]
-    ```
-    * **Optional:** Replace `device` with the desired device for your checker model (e.g., 'cuda:3').
+If you use this code or the findings from our paper, please cite:
 
-* **Usage**
-
-    * The server will listen on the specified port (default: 12345).
-    * Your main experiment script should send requests to this server containing:
-    * `question`: The question being asked.
-    * `correct_answer`: The ground truth answer.
-    * `model_answer`:  The answer generated by your question-answering model.
-    * This is already done by the llama_experiment.py script.
-
-* **Response**
-
-    The server will process the request using the checker model and return a JSON object containing the original data along with a `result` field indicating whether the model's answer is considered correct.
-
-* **Key Functions**
-
-    * **`process_request()`** Handles incoming requests, calls the checker, and prepares the response.
-    * **`check_answer()`**  The function that interfaces with your Mistral (or other) checker model.
-    * **`main()`** Sets up the socket server and handles the listening loop.
-
-### Evaluating Checker
-*    Our work on evaluating the MistralChecker is present in the checker_mistral_evaluate.ipynb file. FOr details reagarding evaluating see the appendix of the paper.
+```bibtex
+@misc{chaudhary2024quacerc,
+      title={QuaCer-C: Quantitative Certification of Knowledge Comprehension in LLMs}, 
+      author={Isha Chaudhary and Vedaant V. Jain and Gagandeep Singh},
+      year={2024},
+      eprint={2402.15929},
+      archivePrefix={arXiv},
+      primaryClass={id='cs.AI' full_name='Artificial Intelligence' is_active=True alt_name=None in_archive='cs' is_general=False description='Covers all areas of AI except Vision, Robotics, Machine Learning, Multiagent Systems, and Computation and Language (Natural Language Processing), which have separate subject areas. In particular, includes Expert Systems, Theorem Proving (although this may overlap with Logic in Computer Science), Knowledge Representation, Planning, and Uncertainty in AI. Roughly includes material in ACM Subject Classes I.2.0, I.2.1, I.2.3, I.2.4, I.2.8, and I.2.11.'}
+}
+``` 
