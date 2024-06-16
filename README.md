@@ -80,36 +80,6 @@ certificate.*
         ```
 - Please refer to `wikidata_make.py` to see how these files were processed.
 
-**Environment Setup**
-
-1. **Install Packages:** 
-```bash
-pip install transformers numpy statsmodels unidecode genai torch fastchat accelerate
-```
-
-2. **API Key:** If using the Gemini checker, set the `GOOGLE_API_KEY` environment variable. We use only the MistralChecker for our experiments.
-
-### Wikidata5m Filtered:
-- You can get the related files here: insert_link [(google drive)](https://drive.google.com/drive/folders/1q3ELIwexfTiW1mVSJTlQez_6Gvp5Pd9X?usp=sharing)
-- You can also generated the kg files using the wikidata_make.py file.
-- *wikidata_util.json*: stores the filtered knowledge graph with wikidata IDs in the format: 
-`
-    graph = {'vertex1': {'vertex2': 'relation1', 'vertex3': 'relation2'},
-    ...}
-`
-- *wikidata5m_text_edge.json*: stores the context for each edge in knowledge graph in the format: 
-`
-    graph = {'vertex1': {'vertex2': list[sent_1, sent_2, ...], 'vertex3': list[sent_4, sent_5, ...]},
-    ...}
-`
-
-- *wikidata5m_name_id_uni.json*: stores the dictionary between english entity/relation names and wikidata ids for easy access: 
-`
-    graph = {'vertex1': 'vertex1id', 'relation1', 'relation1id',
-    ...}
-`
-- Please look at wikidata_make.py to see how they were processed.
-
 ## Running Experiments
 
 ### 1. Answer Checker Server
