@@ -58,21 +58,21 @@ certificate.*
     - If you prefer to generate the knowledge graph files yourself, you can use the `wikidata_make.py` script. Refer to the script for detailed instructions.
 - **File Descriptions:**
     - **`wikidata_util.json`:** Stores the filtered knowledge graph with Wikidata IDs in the following format:
-        ```json
+        ```
         graph = {
             'vertex1': {'vertex2': 'relation1', 'vertex3': 'relation2'},
             ...
         }
         ```
     - **`wikidata5m_text_edge.json`:** Stores the context for each edge in the knowledge graph:
-        ```json
+        ```
         graph = {
             'vertex1': {'vertex2': ['sent_1', 'sent_2', ...], 'vertex3': ['sent_4', 'sent_5', ...]},
             ...
         }
         ```
     - **`wikidata5m_name_id_uni.json`:** Stores the dictionary mapping between English entity/relation names and Wikidata IDs for easy access:
-        ```json
+        ```
         graph = {
             'vertex1': 'vertex1id', 
             'relation1': 'relation1id',
