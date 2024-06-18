@@ -75,7 +75,9 @@ with open('wikidata5m_entity.txt', 'r') as f:
         for name in possible:
             name = unidecode(name)
             name = name.lower()
-            if name in all_text:
+            pattern = r'\b' + re.escape(name) + r'\b'
+            matches = re.search(pattern, all_text)
+            if matches:
                 ind = all_text.index(name)
                 if ind < min_ind:
                     min_ind = ind
@@ -275,13 +277,13 @@ for key, value in wikidata_graph_util.items():
         assert k in wikidata_text_edge[key]
 
 os.makedirs('wikidata_graphs', exist_ok=True)
-with open('wikidata_graphs/wikidata_name_id.json', 'w') as f:
+with open('wikidata_graphs1/wikidata_name_id.json', 'w') as f:
     json.dump(wikidata_name_id, f)
-with open('wikidata_graphs/wikidata_text.json', 'w') as f:
+with open('wikidata_graphs1/wikidata_text.json', 'w') as f:
     json.dump(wikidata_text, f)
-with open('wikidata_graphs/wikidata_util.json', 'w') as f:
+with open('wikidata_graphs1/wikidata_util.json', 'w') as f:
     json.dump(wikidata_graph_util, f)
-with open('wikidata_graphs/wikidata_sentencized.json', 'w') as f:
+with open('wikidata_graphs1/wikidata_sentencized.json', 'w') as f:
     json.dump(wikidata_text_sentencized, f)
-with open('wikidata_graphs/wikidata_text_edge.json', 'w') as f:
+with open('wikidata_graphs1/wikidata_text_edge.json', 'w') as f:
     json.dump(wikidata_text_edge, f)
