@@ -276,7 +276,7 @@ for key, value in wikidata_graph_util.items():
         assert k in wikidata_text
         assert k in wikidata_text_edge[key]
 
-os.makedirs('wikidata_graphs', exist_ok=True)
+os.makedirs('wikidata_graphs1', exist_ok=True)
 with open('wikidata_graphs1/wikidata_name_id.json', 'w') as f:
     json.dump(wikidata_name_id, f)
 with open('wikidata_graphs1/wikidata_text.json', 'w') as f:

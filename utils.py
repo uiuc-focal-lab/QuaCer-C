@@ -572,7 +572,10 @@ def form_context_list(query_path, wikidata_text_edge):
         if dest not in wikidata_text_edge[source]:
             print(source, dest)
             return None
-        context_list.append(wikidata_text_edge[source][dest])
+        relevant_text = wikidata_text_edge[source][dest]
+        if type(relevant_text) == list:
+            relevant_text = ' '.join(relevant_text)
+        context_list.append(relevant_text)
         # print(f"for {wikidata_name_id[source]} to {wikidata_name_id[dest]} we have {wikidata_text_edge[source][dest]}")
     return context_list
     # random.shuffle(context_list)
