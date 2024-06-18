@@ -211,6 +211,8 @@ for key, value in wikidata_util.items():
                     if key_relevant_ids[i+1] - key_relevant_ids[i] > 1:
                         #add atmost 2 sentences between key sentences if needed
                         for j in range(max(key_relevant_ids[i]+1, key_relevant_ids[i+1]-2), key_relevant_ids[i+1]):
+                            if k_done >= k_todo:
+                                break
                             relevant_sentences.append(wikidata_text_sentencized[key][j])
                             k_done += 1
                 else:
@@ -231,11 +233,6 @@ for key, value in wikidata_util.items():
                 if len(relevant_sentences) >= 8:
                     break
                 relevant_sentences.append(wikidata_text_sentencized[obj][idx])
-            if len(relevant_sentences) < 4:
-                print(num_key_sents)
-                print(len(relevant_sentences))
-                #we have an error
-                exit(1)
             wikidata_text_edge[key][obj] = copy.deepcopy(relevant_sentences) #' '.join(relevant_sentences)
             new_value[obj] = rel
             if (count-8) % 1000000 == 0:
