@@ -21,7 +21,7 @@ MIN_CONTEXT_LEN = 5
 MAX_CONTEXT_LEN = 8
 
 find = ['P31', 'P279', 'P361'] # instance of, subclass of, part of, these relations are very vague so we discard them
-with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as file:
+with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as file: #TODO: fix hard-coded paths; where's the file in the repo?
     for line in file:
         line = line.strip()
         line = line.split('\t')
@@ -34,7 +34,7 @@ with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as fil
             wikidata_graph[line[0]][line[1]] = []
         wikidata_graph[line[0]][line[1]].append(line[2])
         
-with open('wikidata5m_text.txt', 'r') as f:
+with open('wikidata5m_text.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -48,7 +48,7 @@ with open('wikidata5m_text.txt', 'r') as f:
 
 
 possible_entity_names = {}
-with open('wikidata5m_entity.txt', 'r') as f:
+with open('wikidata5m_entity.txt', 'r') as f: #TODO: where is this file? Put it in right path.
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -61,7 +61,7 @@ with open('wikidata5m_entity.txt', 'r') as f:
 # We primarily use this for two things: ensure some alias occurs in node's text, also the sentence in query of the form : A is also as A_alias uses info from this for naming A
 print("Starting Names")
 possible_entity_names = {}
-with open('wikidata5m_entity.txt', 'r') as f:
+with open('wikidata5m_entity.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -93,13 +93,13 @@ with open('wikidata5m_entity.txt', 'r') as f:
         if common == '':
             continue
         wikidata_name_id[line[0]] = common.strip()
-with open('wikidata5m_relation.txt', 'r') as f:
+with open('wikidata5m_relation.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
         line = [x.strip() for x in line]
         wikidata_name_id[line[0]] = unidecode(line[1]).lower()
-gc.collect()
+gc.collect() # is this needed? 
 
 print("len wikidata name id:", len(wikidata_name_id))
 
