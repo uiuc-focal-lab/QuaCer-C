@@ -566,14 +566,18 @@ def load_aliases(path):
             possible_entities[line[0]] = line[1:]
     return possible_entities
 
-def form_context_list(query_path, wikidata_text_edge):
+def form_context_list(query_path, wikidata_text_edge, wikidata_util, entity_top_alias):
     context_list = []
     for i in range(len(query_path)-1):
         source, dest = query_path[i], query_path[i+1]
         if dest not in wikidata_text_edge[source]:
             print(source, dest)
             return None
-        relevant_text = wikidata_text_edge[source][dest]
+        if wikidata_util[source][dest] == 'P20': # death place
+            relevant_text = [f"{entity_top_alias[source]} died at {entity_top_alias[dest]}"]
+        else:
+            relevant_text = []
+        relevant_text.extend(wikidata_text_edge[source][dest])
         if type(relevant_text) == list:
             relevant_text = ' '.join(relevant_text)
         context_list.append(relevant_text)
