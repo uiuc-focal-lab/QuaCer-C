@@ -582,6 +582,7 @@ def form_context_list(query_path, wikidata_text_edge, wikidata_util, entity_top_
         if type(relevant_text) == list:
             relevant_text = ' '.join(relevant_text)
         context_list.append(relevant_text)
+    return context_list
 
 def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct_id):
     """
