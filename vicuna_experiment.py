@@ -118,41 +118,6 @@ def query_vicuna_model(prompts: list[str], model, tokenizer, do_sample=True, top
     torch.cuda.empty_cache()
     gc.collect()
     return decoded
-
-def get_query_data(graph_algos, source, id2name, graph_text_edge, distractor_query=False, k=5):
-    while True:
-        distractor=None
-        node_distracted=None
-        query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
-        if distractor_query:
-            distractor_tuple = graph_algos.get_best_distractor(query_results[1], query_results[3])
-            if distractor_tuple is None:
-                continue
-            distractor, node_distracted = distractor_tuple
-        query_inf, _, correct_ids, ids_path = query_results
-        query, entity_alias, k_num = query_inf
-        path = [id2name[ids_path[i]] for i in range(len(ids_path))]
-        if 'country of' in query:
-            query = query.replace('country of', 'country location of') # to avoid ambiguity
-        true_ids_path = ids_path.copy()
-        if not distractor_query:
-            random_distractor_parent = random.choice(list(graph_text_edge.keys()))
-            try:
-                random_distractor = random.choice(list(graph_text_edge[random_distractor_parent].keys()))
-            except:
-                random_distractor = None
-            if random_distractor not in true_ids_path and random_distractor is not None:
-                distractor = random_distractor
-                node_distracted = random_distractor_parent
-        context_list = form_context_list(true_ids_path, graph_text_edge)
-        if distractor is not None:
-            ids_path.append(distractor)
-            context_list.append(graph_text_edge[node_distracted][distractor])
-        
-        random.shuffle(context_list)
-        context = '\n'.join(context_list)
-        context += f" {id2name[true_ids_path[0]]} is also known as {entity_alias}."
-        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor}
     
 def experiment_pipeline(graph_algos, graph_text_edge, entity_aliases, source, relation_aliases, id2name, k=5, distractor_query=False, num_queries=5):
     global qa_model, tokenizer, checker_llm

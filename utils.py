@@ -566,7 +566,7 @@ def load_aliases(path):
             possible_entities[line[0]] = line[1:]
     return possible_entities
 
-def form_context_list(query_path, wikidata_text_edge):
+def form_context_list(query_path, wikidata_text_edge, wikidata_util, entity_top_alias):
     context_list = []
     for i in range(len(query_path)-1):
         source, dest = query_path[i], query_path[i+1]
@@ -574,15 +574,14 @@ def form_context_list(query_path, wikidata_text_edge):
             print(source, dest)
             return None
         relevant_text = wikidata_text_edge[source][dest]
+        if wikidata_util[source][dest] == 'P20': # death place
+            relevant_text = [f"{entity_top_alias[source]} died at {entity_top_alias[dest]}"]
+        else:
+            relevant_text = []
+        relevant_text.extend(wikidata_text_edge[source][dest])
         if type(relevant_text) == list:
             relevant_text = ' '.join(relevant_text)
         context_list.append(relevant_text)
-        # print(f"for {wikidata_name_id[source]} to {wikidata_name_id[dest]} we have {wikidata_text_edge[source][dest]}")
-    return context_list
-    # random.shuffle(context_list)
-    # context = '\n'.join(context_list)
-    # context += f" {wikidata_name_id[query_path[0]]} is also known as {entity_alias}."
-    # return context
 
 def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct_id):
     """
@@ -611,3 +610,86 @@ def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct
         if matches:
             return 1
     return 0
+
+def create_context_list(all_sents, relevant_sents, tokenizer, max_length=15000):
+    # Flatten relevant_sents and calculate its total tokenized length
+    flat_relevant_sents = [item for sublist in relevant_sents for item in sublist]
+    tokenized_relevant_sents = tokenizer(flat_relevant_sents, add_special_tokens=False)
+    total_length_relevant_sents = sum(len(ids) for ids in tokenized_relevant_sents['input_ids'])
+
+    if total_length_relevant_sents > max_length:
+        raise ValueError("The combined tokens of relevant_sents exceed the limit of 15,000 tokens.")
+
+    set_relevant_sents = set(flat_relevant_sents)
+    to_include = set()
+    current_length = total_length_relevant_sents
+    seen_strings = set(flat_relevant_sents)  # To track duplicates and included strings
+
+    # Check each item in all_sents for inclusion
+    for a_sublist in all_sents:
+        for a_item in a_sublist:
+            item_tokenized_length = len(tokenizer(a_item, add_special_tokens=False))
+            if a_item in set_relevant_sents or (a_item not in seen_strings and current_length + item_tokenized_length <= max_length):
+                to_include.add(a_item)
+                seen_strings.add(a_item)
+                if a_item not in set_relevant_sents:  # Only add to current_length if not already accounted for
+                    current_length += item_tokenized_length
+
+    combined_list = []
+    # Ensure each item is only added once
+    for a_sublist in all_sents:
+        for a_item in a_sublist:
+            if a_item in to_include and a_item not in combined_list:
+                combined_list.append(a_item)
+
+    return combined_list
+
+def get_all_context(query_path, wikidata_text_sentencized):
+    all_context = []
+    for entity in query_path:
+        assert entity in wikidata_text_sentencized
+        all_context.append(wikidata_text_sentencized[entity])
+
+def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5):
+    while True:
+        distractor=None
+        node_distracted=None
+        query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
+        if distractor_query:
+            distractor_tuple = graph_algos.get_best_distractor(query_results[1], query_results[3])
+            if distractor_tuple is None:
+                continue
+            distractor, node_distracted = distractor_tuple
+        query_inf, _, correct_ids, ids_path = query_results
+        query, entity_alias, k_num = query_inf
+        path = [id2name[ids_path[i]] for i in range(len(ids_path))]
+        if 'country of' in query:
+            query = query.replace('country of', 'country location of') # to avoid ambiguity
+        true_ids_path = ids_path.copy()
+        if not distractor_query:
+            random_distractor_parent = random.choice(list(graph_text_edge.keys()))
+            try:
+                random_distractor = random.choice(list(graph_text_edge[random_distractor_parent].keys()))
+            except:
+                random_distractor = None
+            if random_distractor not in true_ids_path and random_distractor is not None:
+                distractor = random_distractor
+                node_distracted = random_distractor_parent
+        relevant_context_list = form_context_list(true_ids_path, graph_text_edge, graph_algos.graph, entity_top_alias=id2name)
+        all_context = get_all_context(true_ids_path, graph_text_sentencized)
+        context_list = create_context_list(all_context, relevant_context_list, tokenizer, max_length=30000)
+        if distractor is not None:
+            ids_path.append(distractor)
+            context_list.append(graph_text_edge[node_distracted][distractor])
+        
+        random.shuffle(context_list)
+        context = '\n'.join(context_list)
+        if id2name[true_ids_path[0]].lower() != entity_alias.lower():
+            context += f" {id2name[true_ids_path[0]]} is also known as {entity_alias}."
+        rel_path = [graph_algos.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
+        rel_info = [id2name[rel] for rel in rel_path]
+        rel_aliases_used = query.split('->')[1:-1]
+        assert len(rel_info) == len(rel_aliases_used)
+        rel_context = ' '.join([f"{rel_aliases_used[i]} means the same as {rel_info[i]}" for i in range(len(rel_info))])
+        context += f"\n{rel_context}"
+        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor}

@@ -35,6 +35,7 @@ def get_args():
     parser.add_argument('--results_dir', type=str, default='final_results/mistral_distractorfull/')
     parser.add_argument('--entity_aliases_path', type=str, default='wikidata5m_entity.txt')
     parser.add_argument('--id2name_path', type=str, default='wikidata_graphs4/wikidata_name_id.json')
+    parser.add_argument('--sentencized_path', type=str, default='wikidata_graphs4/wikidata_sentencized.json')
     parser.add_argument('--relation_aliases_path', type=str, default='wikidata5m_relation.txt')
     parser.add_argument('--distractor_query', action='store_true', default=False, help=' best distractor based query?')
 
@@ -105,43 +106,8 @@ def query_mistral_model(prompts: list[str], model, tokenizer, do_sample=True, to
     decoded = tokenizer.batch_decode(generated_ids.detach().cpu())
     model_ans = decoded[0].strip()
     return [model_ans]
-
-def get_query_data(graph_algos, source, id2name, graph_text_edge, distractor_query=False, k=5):
-    while True:
-        distractor=None
-        node_distracted=None
-        query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
-        if distractor_query:
-            distractor_tuple = graph_algos.get_best_distractor(query_results[1], query_results[3])
-            if distractor_tuple is None:
-                continue
-            distractor, node_distracted = distractor_tuple
-        query_inf, _, correct_ids, ids_path = query_results
-        query, entity_alias, k_num = query_inf
-        path = [id2name[ids_path[i]] for i in range(len(ids_path))]
-        if 'country of' in query:
-            query = query.replace('country of', 'country location of') # to avoid ambiguity
-        true_ids_path = ids_path.copy()
-        if not distractor_query:
-            random_distractor_parent = random.choice(list(graph_text_edge.keys()))
-            try:
-                random_distractor = random.choice(list(graph_text_edge[random_distractor_parent].keys()))
-            except:
-                random_distractor = None
-            if random_distractor not in true_ids_path and random_distractor is not None:
-                distractor = random_distractor
-                node_distracted = random_distractor_parent
-        context_list = form_context_list(true_ids_path, graph_text_edge)
-        if distractor is not None:
-            ids_path.append(distractor)
-            context_list.append(graph_text_edge[node_distracted][distractor])
-        
-        random.shuffle(context_list)
-        context = '\n'.join(context_list)
-        context += f" {id2name[true_ids_path[0]]} is also known as {entity_alias}."
-        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor}
     
-def experiment_pipeline(graph_algos, graph_text_edge, entity_aliases, source, relation_aliases, id2name, k=5, distractor_query=False, num_queries=5):
+def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, entity_aliases, source, relation_aliases, id2name, k=5, distractor_query=False, num_queries=5):
     global qa_model, tokenizer, checker_llm
     results = []
     correct = 0
@@ -154,7 +120,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, entity_aliases, source, re
             prompts = []
             queries_data = []
             for j in range(BATCH_NUM):
-                query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, distractor_query=distractor_query, k=k)
+                query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k)
                 
                 prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
@@ -204,6 +170,7 @@ def main():
     tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph_edge = json.load(open(args.context_graph_edge_path))
+    graph_text_sentencized = json.load(open(args.sentencized_path))
     id2name = json.load(open(args.id2name_path))
     checker_host, checker_port = args.host, args.port
     entity_aliases = load_aliases(args.entity_aliases_path)
@@ -239,7 +206,7 @@ def main():
             continue
         print(vertex, vertex_id, len(subgraph))
         expriment_results = experiment_pipeline(graph_algos=subgraph_algos, k=4, num_queries=args.num_queries, 
-                                                graph_text_edge=context_graph_edge, entity_aliases=entity_aliases, 
+                                                graph_text_edge=context_graph_edge, graph_text_sentencized=graph_text_sentencized, entity_aliases=entity_aliases, 
                                                 source=vertex_id, relation_aliases=relation_aliases, id2name=id2name, distractor_query=args.distractor_query)
         end_time = time.time()
         print(f'Time taken for {vertex} = {end_time - start_time}')

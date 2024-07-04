@@ -17,8 +17,11 @@ wikidata_text = {}
 wikidata_en_text = {}
 codex_graph = {}
 
+MIN_CONTEXT_LEN = 5
+MAX_CONTEXT_LEN = 8
+
 find = ['P31', 'P279', 'P361'] # instance of, subclass of, part of, these relations are very vague so we discard them
-with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as file:
+with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as file: #TODO: fix hard-coded paths; where's the file in the repo?
     for line in file:
         line = line.strip()
         line = line.split('\t')
@@ -31,7 +34,7 @@ with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as fil
             wikidata_graph[line[0]][line[1]] = []
         wikidata_graph[line[0]][line[1]].append(line[2])
         
-with open('wikidata5m_text.txt', 'r') as f:
+with open('wikidata5m_text.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -45,7 +48,7 @@ with open('wikidata5m_text.txt', 'r') as f:
 
 
 possible_entity_names = {}
-with open('wikidata5m_entity.txt', 'r') as f:
+with open('wikidata5m_entity.txt', 'r') as f: #TODO: where is this file? Put it in right path.
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -54,9 +57,11 @@ with open('wikidata5m_entity.txt', 'r') as f:
             continue
         possible_entity_names[line[0]] = line[1:]
 
+#TODO: discuss the most common alias, do we continue filtering out nodes where abstract do not mention nodes
+# We primarily use this for two things: ensure some alias occurs in node's text, also the sentence in query of the form : A is also as A_alias uses info from this for naming A
 print("Starting Names")
 possible_entity_names = {}
-with open('wikidata5m_entity.txt', 'r') as f:
+with open('wikidata5m_entity.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -64,7 +69,7 @@ with open('wikidata5m_entity.txt', 'r') as f:
         if line[0] not in wikidata_text:
             continue
         possible_entity_names[line[0]] = line[1:]
-        possible = line[1:min(30, len(line))] #select most common label from the first 30 aliases
+        possible = line[1:] #select most common label from the aliases
         common = ''
         all_text = wikidata_text[line[0]]
         all_text = unidecode(all_text)
@@ -83,17 +88,20 @@ with open('wikidata5m_entity.txt', 'r') as f:
                     min_ind = ind
                     common = name
                 if min_ind <= 15:
+                    #index of alias is early enough in text to break and not search for an alias occuring earlier
                     break
         if common == '':
             continue
         wikidata_name_id[line[0]] = common.strip()
-with open('wikidata5m_relation.txt', 'r') as f:
+possible_relation_names = {}
+with open('wikidata5m_relation.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
         line = [x.strip() for x in line]
         wikidata_name_id[line[0]] = unidecode(line[1]).lower()
-gc.collect()
+        possible_relation_names[line[0]] = line[1:]
+gc.collect() # is this needed? 
 
 print("len wikidata name id:", len(wikidata_name_id))
 
@@ -151,29 +159,30 @@ for key, value in wikidata_util.items():
             continue
         possible_names = possible_entity_names[obj]
         possible_names = [unidecode(x).lower().strip() for x in possible_names]
+        relation_names = possible_relation_names[rel]
+        relation_names = [unidecode(x).lower().strip() for x in relation_names]
         key_relevant_ids = []
         obj_relevant_ids = []
         key_relevant_ids.append(0)
         # relevant_sentences.append(wikidata_text_sentencized[key][0])
         found = False
+                
         for i, sent in enumerate(wikidata_text_sentencized_format[key]):
+            found_in_sent = False
             for name in possible_names:
-                pattern = r'\b' + re.escape(name) + r'\b'
-                matches = re.search(pattern, sent)
-                if matches:
-                    # print(i, len(wikidata_text_sentencized_format[key]))
-                    if i > 0:
-                        key_relevant_ids.append(i)
-                    new_value[obj] = rel
-                    # if i > 0:
-                    #     # for add_i in range(max(1, i-2), i):
-                    #     #     relevant_sentences.append(wikidata_text_sentencized[key][add_i])
-                    #     key_relevant_ids.add(i)
-                        # relevant_sentences.append(wikidata_text_sentencized[key][i])
-                    # relevant_sentences.append(sent)
-                    # for add_i in range(i+1, min(i+3, len(wikidata_text_sentencized_format[key]))):
-                    #     relevant_sentences.append(wikidata_text_sentencized[key][add_i])
-                    found = True
+                for rel_name in relation_names:
+                    #TODO: better way to find relevant sentences
+                    pattern = r'\b' + re.escape(name) + r'\b|' + r'\b' + re.escape(rel_name) + r'\b'
+                    matches = re.search(pattern, sent)
+                    if matches:
+                        # print(i, len(wikidata_text_sentencized_format[key]))
+                        if i > 0:
+                            key_relevant_ids.append(i)
+                        new_value[obj] = rel
+                        found = True
+                        found_in_sent = True
+                        break
+                if found_in_sent:
                     break
         if not found:
             if obj not in wikidata_text:
@@ -189,20 +198,14 @@ for key, value in wikidata_util.items():
                         if i > 0:
                             obj_relevant_ids.append(i)
                         new_value[obj] = rel
-                        # if i > 0:
-                        #     for add_i in range(max(1, i-2), i):
-                        #         relevant_sentences.append(wikidata_text_sentencized[obj][add_i])
-                        #     relevant_sentences.append(wikidata_text_sentencized[obj][i])
-                        # # relevant_sentences.append(sent)
-                        # for add_i in range(i+1, min(i+3, len(wikidata_text_sentencized_format[obj]))):
-                        #     relevant_sentences.append(wikidata_text_sentencized[obj][add_i])
                         found = True
                         break
+
         if found:
             relevant_sentences = []
             num_key_sents = len(wikidata_text_sentencized[key])
             k_done = 0 
-            k_todo = 5 - len(key_relevant_ids) - len(obj_relevant_ids) # additional sentences to be added as 5 is min in context
+            k_todo = MIN_CONTEXT_LEN - len(key_relevant_ids) - len(obj_relevant_ids) # additional sentences to be added as 5 is min in context
             
             #add all key sentences as well as filler sentences in between to get min length context
             for i in range(len(key_relevant_ids)):
@@ -226,13 +229,13 @@ for key, value in wikidata_util.items():
                             relevant_sentences.append(wikidata_text_sentencized[key][j])
                             k_done += 1
             
-            #max context sentences number is 8
-            if len(relevant_sentences) > 8:
-                relevant_sentences = relevant_sentences[:8]
+            #max context sentences number is 8, #TODO: we could change this for models with large context
+            if len(relevant_sentences) > MAX_CONTEXT_LEN:
+                relevant_sentences = relevant_sentences[:MAX_CONTEXT_LEN]
             #as we add and remove in order the intro sentence about the entity is always present
             assert wikidata_text_sentencized[key][0] in relevant_sentences 
             for idx in obj_relevant_ids:
-                if len(relevant_sentences) >= 8:
+                if len(relevant_sentences) >= MAX_CONTEXT_LEN:
                     break
                 relevant_sentences.append(wikidata_text_sentencized[obj][idx])
             wikidata_text_edge[key][obj] = copy.deepcopy(relevant_sentences) #' '.join(relevant_sentences)
