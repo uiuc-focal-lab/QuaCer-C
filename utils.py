@@ -22,28 +22,31 @@ import re
 FEW_SHOT_EXAMPLES = """
 Example questions and correct answers:
 Common Context: entity_B is the son of entity_A. entity_E is the sister of entity_A. entity_B leads entity_C. Entity_D is a member of Entity_C. Entity_D is a friend of entity_E. entity_E has mother entity_F who likes the services of entity_C.
-question 1: entity_A(father of)(land of)?
-answer: entity_A (father of) entity_B (leader of) entity_C
-So, the final answer is entity_C
+question 1: entity_A->(father of)->(land of)->?
+Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_B
+answer: 2. entity_C
+explanation: entity_A->(father of)entity_B->(land of)entity_C
 how to get answer: find who entity_A is father of to get entity_B, then find what B is the leader of to get entity_C which the final answer.
 
-question 2: entity_B(chief of)(constitues)(companion of)?
-answer: entity_B (chief of) entity_C (constitues)entity_D(companion of) entity_E
-So, the final_answer is Entity_E
+question 2: entity_B->(chief of)->(constitues)->(companion of)->?
+Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
+answer: 4. entity_E
+explanation: entity_B->(chief of)entity_C->(constitues)entity_D->(companion of)entity_E
 how to get answer: find what entity_B is the chief of to get entity_C, find what entity_C constitutes of to get entity_D, then find the companion of entity_D is the land of to get entity_E.
 """
 
 LLM_PROMPT_TEMPLATE = """
 {few_shot_examples}
 
-Actual Data:
+Actual Query:
 Given Context:
 {context}
 
 Answer the question:
 {query}
 
-answer the query in a short sentence
+answer the question by selecting the correct answer from the following options:
+{options}
 """
 
 CHECKER_INITIAL_PROMPT = f"""
