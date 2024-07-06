@@ -18,6 +18,7 @@ import torch
 import gc
 from unidecode import unidecode
 import re
+import math
 
 FEW_SHOT_EXAMPLES = """
 Example questions and correct answers:
@@ -104,6 +105,57 @@ def sort_vertices_by_measure(graph, k, weights):
     sorted_vertices = sorted(measure, key=measure.get, reverse=True)
     
     return sorted_vertices
+
+def generate_answer_options(correct_ans, distractors, path_entities, random_entities, wikidata_util,
+                            min_num_options=4):
+    # assumption: distractors are ordered by decreasing distracting power
+    # assumption: path_entities is also ordered by increasing proximity to the correct answer
+    #random entities: list[list[str]], 0th element: list[ents] that are from path[-1], so on
+    #   A
+    #  / \r
+    # B   E
+    # |r
+    # C
+    assert correct_ans == path_entities[0]
+    options = [(correct_ans, path_entities[1])]
+    options.extend(distractors)
+    if len(options) >= min_num_options:
+        options = options[:min_num_options]
+        random.shuffle(options)
+        return options
+    if len(path_entities) > 0:
+        options.extend([(path_entities[i], path_entities[i+1]) for i in range(1, len(path_entities)-1)])
+    if len(options) >= min_num_options:
+        options = options[:min_num_options]
+        random.shuffle(options)
+        return options
+    rel_to_find = wikidata_util[path_entities[1]][path_entities[0]]
+
+    good_random_entities = [] # has the same relation as that connecting correct answer to its parent
+
+    for i in range(1, len(random_entities)):
+        parent_ent = path_entities[i]
+        for pos_ent in random_entities[i]:
+            if i > 0:
+                if pos_ent == path_entities[i-1]:
+                    continue
+            if wikidata_util[parent_ent][pos_ent] == rel_to_find:
+                good_random_entities.append((pos_ent, parent_ent))
+    options.extend(good_random_entities)
+    num_random = 2
+    random_options = []
+    for i in range(1, len(random_entities)):
+        parent_ent = path_entities[i]
+        pos_ents = [(ent, parent_ent) for ent in random_entities[i] if (ent, parent_ent) not in options]
+        random_options.extend(random.sample(pos_ents, num_random))  
+    options.extend(random_options)
+    if len(options) >= min_num_options:
+        options = options[:min_num_options]
+        random.shuffle(options)
+    return options
+        
+
+        
 
 class GraphAlgos():
     def __init__(self, graph: dict, entity_aliases:dict, relation_aliases:dict) -> None:
@@ -320,10 +372,14 @@ class GraphAlgos():
             i += 1
         return path
     
-    def get_best_distractor(self, start_vertex, path):
+    def get_best_distractor(self, start_vertex, path, do_choose=True):
         """
         Gets the best distractor vertex for a given path.
         Assumes that the path is unique. If the path is not unique, the behavior is undefined.
+
+        Returns a Union(tuple(string, string), list(tuple(string, string)))
+        the first string is the distractor and the second string in the node in the path that leads to the distractor
+        do_choose=True returns a single tuple, do_choose=False returns a list of tuples of possible distractors
         """
         rel_path = [self.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
         best_distractor = None
@@ -338,6 +394,9 @@ class GraphAlgos():
             for distractor in pos_distractors:
                 all_distractors_pos.append((distractor, cur_vertex))
                 distractor_weights.append(i+1)
+                
+        if not do_choose:
+            return all_distractors_pos
         if len(all_distractors_pos) > 0:
             best_distractor_index = random.choices(range(len(all_distractors_pos)), weights=distractor_weights, k=1)[0]
             # print(f"Best Distractor Weight: {distractor_weights[best_distractor_index]}")
@@ -345,6 +404,7 @@ class GraphAlgos():
         if best_distractor is not None:
             assert best_distractor not in path, f"Best distractor {best_distractor} is in path {path}"
         return best_distractor
+    
     
     def generate_random_query(self, k=5, return_path=False, source=None):
         """
@@ -653,17 +713,28 @@ def get_all_context(query_path, wikidata_text_sentencized):
     for entity in query_path:
         assert entity in wikidata_text_sentencized
         all_context.append(wikidata_text_sentencized[entity])
+        
+def get_random_entities(query_path, wikidata_util):
+    random_entities = []
+    for i in range(len(query_path)):
+        parent_ent = query_path[i]
+        pos_ents = list(wikidata_util[parent_ent].keys())
+        random_entities.append(pos_ents)
+    return random_entities
 
 def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5):
     while True:
         distractor=None
         node_distracted=None
         query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
+        all_distractors = []
         if distractor_query:
             distractor_tuple = graph_algos.get_best_distractor(query_results[1], query_results[3])
             if distractor_tuple is None:
                 continue
             distractor, node_distracted = distractor_tuple
+            all_distractors = graph_algos.get_best_distractor(query_results[1], query_results[3], do_choose=False)
+            
         query_inf, _, correct_ids, ids_path = query_results
         query, entity_alias, k_num = query_inf
         path = [id2name[ids_path[i]] for i in range(len(ids_path))]
@@ -679,8 +750,14 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
             if random_distractor not in true_ids_path and random_distractor is not None:
                 distractor = random_distractor
                 node_distracted = random_distractor_parent
+        options = generate_answer_options(true_ids_path[-1], all_distractors, reversed(true_ids_path), get_random_entities(reversed(true_ids_path), graph_algos.graph), graph_algos.graph)
         relevant_context_list = form_context_list(true_ids_path, graph_text_edge, graph_algos.graph, entity_top_alias=id2name)
-        all_context = get_all_context(true_ids_path, graph_text_sentencized)
+        for ent, parent_ent in options:
+            relevant_text = graph_text_edge[parent_ent][ent]
+            if type(relevant_text) == list:
+                relevant_text = ' '.join(relevant_text)
+            relevant_context_list.append(relevant_text)
+        all_context = get_all_context(true_ids_path + [ent for ent, _ in options], graph_text_sentencized)
         context_list = create_context_list(all_context, relevant_context_list, tokenizer, max_length=30000)
         if distractor is not None:
             ids_path.append(distractor)
@@ -696,4 +773,4 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         assert len(rel_info) == len(rel_aliases_used)
         rel_context = ' '.join([f"{rel_aliases_used[i]} means the same as {rel_info[i]}" for i in range(len(rel_info))])
         context += f"\n{rel_context}"
-        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor}
+        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': [ent for ent, _ in options]}

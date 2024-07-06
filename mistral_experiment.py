@@ -121,8 +121,8 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
             queries_data = []
             for j in range(BATCH_NUM):
                 query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k)
-                
-                prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], few_shot_examples=FEW_SHOT_EXAMPLES)
+                options_str = '\n'.join([f'{i+1}. {id2name[option]}' for i, option in enumerate(query_data['answer_options'])])
+                prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], options=options_str, few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
                 queries_data.append(query_data)
             model_answers= query_mistral_model(prompts, qa_model, tokenizer, temperature=1.0)
