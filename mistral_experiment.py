@@ -44,7 +44,7 @@ def get_args():
     parser.add_argument('--port', type=int, default=12345)
     return parser.parse_args()
 
-def check_answer(question, correct_answer, model_answer, entity_aliases, correct_id):
+def check_answer(question, correct_answer, model_answer, entity_aliases, correct_id, correct_answer_num):
     """
     Checks the correctness of the model answer using a combination of simple checks and an external checker server.
 
@@ -59,6 +59,8 @@ def check_answer(question, correct_answer, model_answer, entity_aliases, correct
     :raises RuntimeError: If the checker server does not return a result. 
     """
     global qa_model, checker_host, checker_port
+    
+    return dumb_checker(model_answer, correct_answer_num)
     if simple_checker(model_answer, correct_answer, entity_aliases, correct_id) == 1:
         return 1
     result_dict = None
@@ -141,7 +143,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 model_ans = model_answers[i]
                 eval_ans = 0
                 for num_correct, correct_answer in enumerate(correct_answers):
-                    eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_ids[num_correct])
+                    eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_ids[num_correct], correct_answer_num=queries_data[i]['correct_ans_num'])
                     assert id2name[correct_ids[num_correct]] == correct_answer
                     if eval_ans == 1:
                         break
