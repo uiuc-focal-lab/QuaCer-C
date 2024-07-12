@@ -10,9 +10,6 @@ import copy
 from collections import deque
 import json
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from vertexai.language_models import ChatModel, InputOutputTextPair
-from vertexai.preview.generative_models import GenerativeModel, ChatSession
-import google.generativeai as genai
 from transformers import pipeline
 import torch
 import gc
@@ -48,6 +45,9 @@ Answer the question:
 
 answer the question by selecting the correct answer from the following options:
 {options}
+
+The format for answering is:
+correct: <option_number>. <answer>, because <succinct reason>
 """
 
 CHECKER_INITIAL_PROMPT = f"""
@@ -147,7 +147,7 @@ def generate_answer_options(correct_ans, distractors, path_entities, random_enti
     for i in range(1, len(random_entities)):
         parent_ent = path_entities[i]
         pos_ents = [(ent, parent_ent) for ent in random_entities[i] if (ent, parent_ent) not in options]
-        random_options.extend(random.sample(pos_ents, num_random))  
+        random_options.extend(random.sample(pos_ents, min(num_random, len(pos_ents))))  
     options.extend(random_options)
     if len(options) >= min_num_options:
         options = options[:min_num_options]
@@ -318,12 +318,12 @@ class GraphAlgos():
             #     query = f"the {rel_alias} of {rest_query}"
             #     print(f"NOT OF Query: {query}, Entity: {entity_alias}, Rel: {rel_alias}, Path: {path}, Rest Query: {rest_query}")
             #     return query, entity_alias
-            query = f"{rest_query} ({rel_alias}) "
+            query = f"{rest_query}->({rel_alias}) "
             return query, entity_alias
             
         query = ""
         rest_query, entity_alias = query_path_aux(path)
-        query += rest_query + '?'
+        query += rest_query + '->?'
         # print('Complete path query:', query, 'path:', path)
         return query, entity_alias, len(path)
     
@@ -485,44 +485,6 @@ class GraphAlgos():
         else:
             raise ValueError(f"Method {method} not supported")
         return vertices_out[:num]
-
-class GeminiChecker():
-    def __init__(self) -> None:
-        GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-        genai.configure(api_key=GOOGLE_API_KEY)
-        self.model = genai.GenerativeModel('gemini-pro')
-        self.chat = self.model.start_chat()
-        self.generation_config = {'temperature':0}
-        self.count = 0
-
-    def reset_chat(self):
-        self.chat = self.model.start_chat()
-        self.count = 0
-
-    def checker(self, prompt: str, return_response=False):
-        """
-        input in form: "Question: What is David Beckham's Nationality? Ground Truth: England. Model Answer: British"
-        returns 1 for yes 0 for no and response if return response = True
-        """
-        self.count += 1
-        if self.count > 50 == 0:
-            self.reset_chat()
-        response = self.chat.send_message(
-            f"""context: You are a helpful assistant. Your inputs will consist of a question and a correct answer, and a answer from a model. Your response should be a yes if the model's answer means the correct answer, else answer no.
-            user:{prompt}""", generation_config=self.generation_config
-        )
-        response_text = response.text.lower()
-        answer = 1 if 'yes' in response_text else 0
-        if return_response:
-            return answer, response
-        return answer, None
-
-    def form_prompt(self, question, correct_ans, model_ans):
-        return f"Question: {question} Ground Truth: {correct_ans}. Model Answer: {model_ans}"
-    
-    def raw_checker(self, question, correct_ans, model_ans, return_response=False):
-        prompt = self.form_prompt(question, correct_ans, model_ans)
-        return self.checker(prompt, return_response)
 
 class MistralChecker():
     def __init__(self, model_path, device='cuda:1') -> None:
@@ -686,8 +648,8 @@ def dumb_checker(model_answer, correct_answer_num):
     :return: 1 if the model answer is considered correct, 0 otherwise.
     """
     model_answer = unidecode(model_answer).lower()
-    correct_answer_num = unidecode(correct_answer_num).lower()
-    pattern = r'\b' + re.escape(correct_answer_num) + '.'
+    correct_answer_num = unidecode(str(correct_answer_num)).lower()
+    pattern = r'\b' + re.escape('correct: ') + re.escape(correct_answer_num) + r'\.'
     matches = re.search(pattern, model_answer)
     if matches:
         return 1
@@ -718,19 +680,24 @@ def create_context_list(all_sents, relevant_sents, tokenizer, max_length=15000):
                     current_length += item_tokenized_length
 
     combined_list = []
+    all_sents_set = set()
     # Ensure each item is only added once
     for a_sublist in all_sents:
+        add_list = []
         for a_item in a_sublist:
-            if a_item in to_include and a_item not in combined_list:
-                combined_list.append(a_item)
-
+            if a_item in to_include and a_item not in add_list and a_item not in all_sents_set:
+               add_list.append(a_item)
+               all_sents_set.add(a_item)
+        if len(add_list) > 0:
+            combined_list.append(add_list)
     return combined_list
 
 def get_all_context(query_path, wikidata_text_sentencized):
     all_context = []
     for entity in query_path:
-        assert entity in wikidata_text_sentencized
-        all_context.append(wikidata_text_sentencized[entity])
+        if entity in wikidata_text_sentencized:
+            all_context.append(wikidata_text_sentencized[entity])
+    return all_context
         
 def get_random_entities(query_path, wikidata_util):
     random_entities = []
@@ -740,7 +707,7 @@ def get_random_entities(query_path, wikidata_util):
         random_entities.append(pos_ents)
     return random_entities
 
-def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5):
+def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5, shuffle_context=True):
     while True:
         distractor=None
         node_distracted=None
@@ -759,37 +726,41 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         if 'country of' in query:
             query = query.replace('country of', 'country location of') # to avoid ambiguity
         true_ids_path = ids_path.copy()
-        if not distractor_query:
-            random_distractor_parent = random.choice(list(graph_text_edge.keys()))
-            try:
-                random_distractor = random.choice(list(graph_text_edge[random_distractor_parent].keys()))
-            except:
-                random_distractor = None
-            if random_distractor not in true_ids_path and random_distractor is not None:
-                distractor = random_distractor
-                node_distracted = random_distractor_parent
-        options = generate_answer_options(true_ids_path[-1], all_distractors, reversed(true_ids_path), get_random_entities(reversed(true_ids_path), graph_algos.graph), graph_algos.graph)
+        # if not distractor_query:
+        #     random_distractor_parent = random.choice(list(graph_text_edge.keys()))
+        #     try:
+        #         random_distractor = random.choice(list(graph_text_edge[random_distractor_parent].keys()))
+        #     except:
+        #         random_distractor = None
+        #     if random_distractor not in true_ids_path and random_distractor is not None:
+        #         distractor = random_distractor
+        #         node_distracted = random_distractor_parent
+        options = generate_answer_options(true_ids_path[-1], all_distractors, list(reversed(true_ids_path)), get_random_entities(list(reversed(true_ids_path)), graph_algos.graph), graph_algos.graph)
         relevant_context_list = form_context_list(true_ids_path, graph_text_edge, graph_algos.graph, entity_top_alias=id2name)
         for ent, parent_ent in options:
             relevant_text = graph_text_edge[parent_ent][ent]
             if type(relevant_text) == list:
                 relevant_text = ' '.join(relevant_text)
             relevant_context_list.append(relevant_text)
+        
         all_context = get_all_context(true_ids_path + [ent for ent, _ in options], graph_text_sentencized)
         context_list = create_context_list(all_context, relevant_context_list, tokenizer, max_length=30000)
         if distractor is not None:
             ids_path.append(distractor)
-            context_list.append(graph_text_edge[node_distracted][distractor])
-        
-        random.shuffle(context_list)
-        context = '\n'.join(context_list)
+            distractor_text = graph_text_edge[node_distracted][distractor]
+            context_list.append(distractor_text)
+        if shuffle_context:
+            random.shuffle(context_list)
+        context = '\n'.join([' '.join(context_part) for context_part in context_list])
         if id2name[true_ids_path[0]].lower() != entity_alias.lower():
             context += f" {id2name[true_ids_path[0]]} is also known as {entity_alias}."
-        rel_path = [graph_algos.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
+        rel_path = [graph_algos.get_relation_for_vertex(true_ids_path[i], true_ids_path[i+1]) for i in range(len(true_ids_path)-1)]
         rel_info = [id2name[rel] for rel in rel_path]
         rel_aliases_used = query.split('->')[1:-1]
+        # print(f"rel_info: {rel_info}, rel_aliases_used: {rel_aliases_used}")
         assert len(rel_info) == len(rel_aliases_used)
         rel_context = ' '.join([f"{rel_aliases_used[i]} means the same as {rel_info[i]}" for i in range(len(rel_info))])
         context += f"\n{rel_context}"
         answer_options = [ent for ent, _ in options]
-        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': answer_options, 'correct_ans_num': answer_options.index(true_ids_path[-1])}
+        random.shuffle(answer_options)
+        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': answer_options, 'correct_ans_num': answer_options.index(true_ids_path[-1])+1}

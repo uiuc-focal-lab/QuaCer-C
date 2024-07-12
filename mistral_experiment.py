@@ -12,34 +12,34 @@ import pickle
 import time
 import torch
 import gc
-from llama_local import example_chat_completion as ecc
 import socket
 import gc
 import argparse
 import pickle
 import copy
 import os
-from fastchat.model import load_model, get_conversation_template, add_model_args
 
 BATCH_NUM = 1
 qa_model = None
 checker_host, checker_port = None, None
-GPU_MAP = {0: "15GiB", 1: "20GiB", 2: "12GiB", 3: "20GiB", "cpu":"120GiB"}
+GPU_MAP = {0: "12GiB", 1: "0GiB", 2: "0GiB", 3: "26GiB", "cpu":"120GiB"}
 INPUT_DEVICE = 'cuda:0'
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
     parser.add_argument('--qa_llm', type=str, default='mistralai/Mistral-7B-Instruct-v0.2')
-    parser.add_argument('--qa_graph_path', type=str, default='wikidata_graphs4/wikidata_util.json')
-    parser.add_argument('--context_graph_edge_path', type=str, default='wikidata_graphs4/wikidata_text_edge.json')
+    parser.add_argument('--qa_graph_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_util.json')
+    parser.add_argument('--context_graph_edge_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_text_edge.json')
     parser.add_argument('--results_dir', type=str, default='final_results/mistral_distractorfull/')
-    parser.add_argument('--entity_aliases_path', type=str, default='wikidata5m_entity.txt')
-    parser.add_argument('--id2name_path', type=str, default='wikidata_graphs4/wikidata_name_id.json')
-    parser.add_argument('--sentencized_path', type=str, default='wikidata_graphs4/wikidata_sentencized.json')
-    parser.add_argument('--relation_aliases_path', type=str, default='wikidata5m_relation.txt')
+    parser.add_argument('--entity_aliases_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata5m_entity.txt')
+    parser.add_argument('--id2name_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_name_id.json')
+    parser.add_argument('--sentencized_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_sentencized.json')
+    parser.add_argument('--relation_aliases_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata5m_relation.txt')
     parser.add_argument('--distractor_query', action='store_true', default=False, help=' best distractor based query?')
+    parser.add_argument('--shuffle_context', action='store_true', default=False, help='Shuffle context in the context of query?')
 
     parser.add_argument('--num_queries', type=int, default=1000)
+    parser.add_argument('--num_certificates', type=int, default=50)
     parser.add_argument('--host', type=str, default='localhost')
     parser.add_argument('--port', type=int, default=12345)
     return parser.parse_args()
@@ -109,7 +109,7 @@ def query_mistral_model(prompts: list[str], model, tokenizer, do_sample=True, to
     model_ans = decoded[0].strip()
     return [model_ans]
     
-def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, entity_aliases, source, relation_aliases, id2name, k=5, distractor_query=False, num_queries=5):
+def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, entity_aliases, source, relation_aliases, id2name, k=5, distractor_query=False, num_queries=5, shuffle_context=True):
     global qa_model, tokenizer, checker_llm
     results = []
     correct = 0
@@ -122,7 +122,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
             prompts = []
             queries_data = []
             for j in range(BATCH_NUM):
-                query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k)
+                query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k, shuffle_context=shuffle_context)
                 options_str = '\n'.join([f'{i+1}. {id2name[option]}' for i, option in enumerate(query_data['answer_options'])])
                 prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], options=options_str, few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
@@ -150,7 +150,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 # print("Time taken for checking answer: ", end_time_temp2 - end_time_temp1)
                 results.append({ 'question':query, 'correct_answers':correct_answers, 'model_answer':model_ans, 
                                 'path_en':path, 'path_id':path_id, 'context':context, 'result':(eval_ans, None), 
-                                'distractor':distractor, 'correct_ids':correct_ids})
+                                'distractor':distractor, 'correct_ids':correct_ids, 'options':queries_data[i]['answer_options'], 'correct_ans_num':queries_data[i]['correct_ans_num']})
                 correct += results[-1]['result'][0]
                 total += 1
             print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
@@ -168,7 +168,7 @@ def main():
     global qa_model, checker_host, checker_port, tokenizer
     args = get_args()
     if not os.path.exists(args.results_dir):
-        os.mkdir(args.results_dir)
+        os.makedirs(args.results_dir)
     tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph_edge = json.load(open(args.context_graph_edge_path))
@@ -194,8 +194,10 @@ def main():
         vertex_id = file[idx:-4]
         already_done.append(vertex_id)
 
-    
+    num_certificates_generated = 0
     for i, vertex_id in enumerate(best_vertices):
+        if num_certificates_generated >= args.num_certificates:
+            break
         vertex = id2name[vertex_id]
         if vertex_id in already_done:
             print("Already done", vertex_id, vertex)
@@ -207,15 +209,17 @@ def main():
             print(len(subgraph), "Skipping", vertex_id, vertex)
             continue
         print(vertex, vertex_id, len(subgraph))
+        num_certificates_generated += 1
         expriment_results = experiment_pipeline(graph_algos=subgraph_algos, k=4, num_queries=args.num_queries, 
                                                 graph_text_edge=context_graph_edge, graph_text_sentencized=graph_text_sentencized, entity_aliases=entity_aliases, 
-                                                source=vertex_id, relation_aliases=relation_aliases, id2name=id2name, distractor_query=args.distractor_query)
+                                                source=vertex_id, relation_aliases=relation_aliases, id2name=id2name, distractor_query=args.distractor_query, shuffle_context=args.shuffle_context)
         end_time = time.time()
         print(f'Time taken for {vertex} = {end_time - start_time}')
         all_times.append(end_time - start_time)
         with open(os.path.join(args.results_dir, str(vertex_id)+'.pkl'), 'wb') as f:
             pickle.dump(expriment_results, f)
         count += 1
+    print(f'Completed {num_certificates_generated} certificates')
     print(f'Average time = {np.mean(all_times)}')
 if __name__ == '__main__':
     main()

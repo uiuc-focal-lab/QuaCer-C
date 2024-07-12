@@ -8,6 +8,7 @@ from nltk.tokenize import sent_tokenize
 import re
 import time
 import copy
+from utils import load_aliases
 
 wikidata_graph = {}
 wikidata_name_id = {}
@@ -17,11 +18,11 @@ wikidata_text = {}
 wikidata_en_text = {}
 codex_graph = {}
 
-MIN_CONTEXT_LEN = 5
-MAX_CONTEXT_LEN = 8
+MIN_CONTEXT_LEN = 4
+MAX_CONTEXT_LEN = 10
 
-find = ['P31', 'P279', 'P361'] # instance of, subclass of, part of, these relations are very vague so we discard them
-with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as file: #TODO: fix hard-coded paths; where's the file in the repo?
+find = ['P31', 'P279', 'P361', 'P2184', 'P2633'] # instance of, subclass of, part of, these relations are very vague so we discard them
+with open('wikidata5m_all_triplet.txt', 'r') as file: #TODO: fix hard-coded paths; where's the file in the repo?
     for line in file:
         line = line.strip()
         line = line.split('\t')
@@ -33,8 +34,8 @@ with open('/home/vvjain3/rag-llm-verify/wikidata5m_all_triplet.txt', 'r') as fil
         if line[1] not in wikidata_graph[line[0]]:
             wikidata_graph[line[0]][line[1]] = []
         wikidata_graph[line[0]][line[1]].append(line[2])
-        
-with open('wikidata5m_text.txt', 'r') as f: # where is this file?
+    
+with open('wikidata5m_text.txt', 'r', encoding="utf-8") as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
@@ -47,26 +48,19 @@ with open('wikidata5m_text.txt', 'r') as f: # where is this file?
             wikidata_text[line[0]] = text
 
 
-possible_entity_names = {}
-with open('wikidata5m_entity.txt', 'r') as f: #TODO: where is this file? Put it in right path.
-    for line in f:
-        line = line.strip()
-        line = line.split('\t')
-        line = [x.strip() for x in line]
-        if line[0] not in wikidata_text:
-            continue
-        possible_entity_names[line[0]] = line[1:]
+possible_entity_names = load_aliases('wikidata5m_entity.txt')
 
 #TODO: discuss the most common alias, do we continue filtering out nodes where abstract do not mention nodes
 # We primarily use this for two things: ensure some alias occurs in node's text, also the sentence in query of the form : A is also as A_alias uses info from this for naming A
 print("Starting Names")
-possible_entity_names = {}
+wikidata_name_id = {}
 with open('wikidata5m_entity.txt', 'r') as f: # where is this file?
     for line in f:
         line = line.strip()
         line = line.split('\t')
         line = [x.strip() for x in line]
         if line[0] not in wikidata_text:
+            wikidata_name_id[line[0]] = unidecode(possible_entity_names[line[0]][0]).lower()
             continue
         possible_entity_names[line[0]] = line[1:]
         possible = line[1:] #select most common label from the aliases
@@ -91,7 +85,7 @@ with open('wikidata5m_entity.txt', 'r') as f: # where is this file?
                     #index of alias is early enough in text to break and not search for an alias occuring earlier
                     break
         if common == '':
-            continue
+            common = unidecode(possible_entity_names[line[0]][0]).lower()
         wikidata_name_id[line[0]] = common.strip()
 possible_relation_names = {}
 with open('wikidata5m_relation.txt', 'r') as f: # where is this file?
@@ -105,6 +99,27 @@ gc.collect() # is this needed?
 
 print("len wikidata name id:", len(wikidata_name_id))
 
+#add death place birth place sentences
+relid2sent = {'P20':'died in', 'P19':'was born in'}
+for key in wikidata_graph:
+    if key not in wikidata_text:
+        continue
+    key_text = ''
+    if key not in wikidata_name_id:
+        if key not in possible_entity_names:
+            continue
+        key_text = possible_entity_names[key][0]
+    else:
+        key_text = wikidata_name_id[key]
+    for relid in relid2sent:
+        if relid in wikidata_graph[key]:
+            if wikidata_graph[key][relid][0] in wikidata_name_id:
+                wikidata_text[key] += f'{key_text} {relid2sent[relid]} {wikidata_name_id[wikidata_graph[key][relid][0]]}.'
+            elif wikidata_graph[key][relid][0] not in possible_entity_names:
+                continue
+            else:
+                wikidata_text[key] += f'{key_text} {relid2sent[relid]} {possible_entity_names[wikidata_graph[key][relid][0]][0]}.'
+                
 wikidata_en_graph = {}
 wikidata_id_name = {}
 for key, value in wikidata_name_id.items():
@@ -168,21 +183,16 @@ for key, value in wikidata_util.items():
         found = False
                 
         for i, sent in enumerate(wikidata_text_sentencized_format[key]):
-            found_in_sent = False
             for name in possible_names:
-                for rel_name in relation_names:
-                    #TODO: better way to find relevant sentences
-                    pattern = r'\b' + re.escape(name) + r'\b|' + r'\b' + re.escape(rel_name) + r'\b'
-                    matches = re.search(pattern, sent)
-                    if matches:
-                        # print(i, len(wikidata_text_sentencized_format[key]))
-                        if i > 0:
-                            key_relevant_ids.append(i)
-                        new_value[obj] = rel
-                        found = True
-                        found_in_sent = True
-                        break
-                if found_in_sent:
+                if len(name) <= 0:
+                    continue
+                pattern = r'\b' + re.escape(name) + r'\b'
+                matches = re.search(pattern, sent)
+                if matches:
+                    if i > 0:
+                        key_relevant_ids.append(i)
+                    new_value[obj] = rel
+                    found = True
                     break
         if not found:
             if obj not in wikidata_text:
@@ -191,6 +201,8 @@ for key, value in wikidata_util.items():
             # relevant_sentences.append(wikidata_text_sentencized[obj][0])
             for i, sent in enumerate(wikidata_text_sentencized_format[obj]):
                 for name in possible_key_names:
+                    if len(name) <= 0:
+                        continue
                     pattern = r'\b' + re.escape(name) + r'\b'
                     matches = re.search(pattern, sent)
                     if matches:
@@ -202,6 +214,20 @@ for key, value in wikidata_util.items():
                         break
 
         if found:
+            for i, sent in enumerate(wikidata_text_sentencized_format[key]):
+                if i not in key_relevant_ids:
+                    for name in relation_names:
+                        if len(name) <= 0:
+                            continue
+                        pattern = r'\b' + re.escape(name) + r'\b'
+                        matches = re.search(pattern, sent)
+                        if matches:
+                            if i > 0:
+                                key_relevant_ids.append(i)
+                            new_value[obj] = rel
+                            found = True
+                            break
+            key_relevant_ids = list(sorted(key_relevant_ids))
             relevant_sentences = []
             num_key_sents = len(wikidata_text_sentencized[key])
             k_done = 0 
@@ -240,7 +266,7 @@ for key, value in wikidata_util.items():
                 relevant_sentences.append(wikidata_text_sentencized[obj][idx])
             wikidata_text_edge[key][obj] = copy.deepcopy(relevant_sentences) #' '.join(relevant_sentences)
             new_value[obj] = rel
-            if (count-8) % 1000000 == 0:
+            if count % 1000000 == 0:
                 print(key, obj, len(wikidata_text_edge[key][obj]), wikidata_text_edge[key][obj])
             count += 1
     if len(new_value) > 0:
@@ -256,37 +282,40 @@ print("Total keys:", keys_done_num, keys_considered, count, total)
 remove = set()
 new_graph = {}
 for key, value in new_wikidata.items():
-    assert key in wikidata_name_id
-    assert key in wikidata_text
     new_value = {}
     for k, v in value.items():
-        assert k in wikidata_name_id
         if v not in wikidata_name_id:
             remove.add(v)
             continue
-        assert k in wikidata_text
         new_value[k] = v
     if len(new_value) > 0:
         new_graph[key] = new_value
 
 wikidata_graph_util = new_graph
+os.makedirs('wikidata_graphs', exist_ok=True)
+with open('wikidata_graphs/wikidata_name_id.json', 'w') as f:
+    json.dump(wikidata_name_id, f)
+with open('wikidata_graphs/wikidata_text.json', 'w') as f:
+    json.dump(wikidata_text, f)
+with open('wikidata_graphs/wikidata_util.json', 'w') as f:
+    json.dump(wikidata_graph_util, f)
+with open('wikidata_graphs/wikidata_sentencized.json', 'w') as f:
+    json.dump(wikidata_text_sentencized, f)
+with open('wikidata_graphs/wikidata_text_edge.json', 'w') as f:
+    json.dump(wikidata_text_edge, f)
+
 for key, value in wikidata_graph_util.items():
-    assert key in wikidata_name_id
-    assert key in wikidata_text
     for k, v in value.items():
-        assert k in wikidata_name_id
-        assert v in wikidata_name_id
-        assert k in wikidata_text
         assert k in wikidata_text_edge[key]
 
-os.makedirs('wikidata_graphs1', exist_ok=True)
-with open('wikidata_graphs1/wikidata_name_id.json', 'w') as f:
+os.makedirs('wikidata_graphs', exist_ok=True)
+with open('wikidata_graphs/wikidata_name_id.json', 'w') as f:
     json.dump(wikidata_name_id, f)
-with open('wikidata_graphs1/wikidata_text.json', 'w') as f:
+with open('wikidata_graphs/wikidata_text.json', 'w') as f:
     json.dump(wikidata_text, f)
-with open('wikidata_graphs1/wikidata_util.json', 'w') as f:
+with open('wikidata_graphs/wikidata_util.json', 'w') as f:
     json.dump(wikidata_graph_util, f)
-with open('wikidata_graphs1/wikidata_sentencized.json', 'w') as f:
+with open('wikidata_graphs/wikidata_sentencized.json', 'w') as f:
     json.dump(wikidata_text_sentencized, f)
-with open('wikidata_graphs1/wikidata_text_edge.json', 'w') as f:
+with open('wikidata_graphs/wikidata_text_edge.json', 'w') as f:
     json.dump(wikidata_text_edge, f)

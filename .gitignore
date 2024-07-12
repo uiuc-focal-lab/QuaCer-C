@@ -73,3 +73,7 @@ wikidata_graphs1/
 final_results_ids_df_with_samples.pkl
 final_results_ids_with_samples.pkl
 important/
+temp*
+*.log
+df_sample.*
+final_results/
