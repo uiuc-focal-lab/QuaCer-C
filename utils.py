@@ -46,8 +46,10 @@ Answer the question:
 answer the question by selecting the correct answer from the following options:
 {options}
 
-The format for answering is:
-correct: <option_number>. <answer>, because <succinct reason>
+The format for beginning your response is:
+correct answer: <option_number>. <answer>, because <succinct reason>
+
+follow this exact format and only choose from the given options
 """
 
 CHECKER_INITIAL_PROMPT = f"""
@@ -604,8 +606,8 @@ def form_context_list(query_path, wikidata_text_edge, wikidata_util, entity_top_
         else:
             relevant_text = []
         relevant_text.extend(wikidata_text_edge[source][dest])
-        if type(relevant_text) == list:
-            relevant_text = ' '.join(relevant_text)
+        # if type(relevant_text) == list:
+        #     relevant_text = ' '.join(relevant_text)
         context_list.append(relevant_text)
     return context_list
 
@@ -649,21 +651,32 @@ def dumb_checker(model_answer, correct_answer_num):
     """
     model_answer = unidecode(model_answer).lower()
     correct_answer_num = unidecode(str(correct_answer_num)).lower()
-    pattern = r'\b' + re.escape('correct: ') + re.escape(correct_answer_num) + r'\.'
+    pattern = r'\bcorrect answer: [\[<{(]?' + re.escape(correct_answer_num) + '[\]>})]?[.]?'
     matches = re.search(pattern, model_answer)
     if matches:
         return 1
     return 0
 
-def create_context_list(all_sents, relevant_sents, tokenizer, max_length=15000):
+def create_context_list(all_sents, relevant_sents_path, relevant_sents_opts, tokenizer, max_length=15000):
     # Flatten relevant_sents and calculate its total tokenized length
-    flat_relevant_sents = [item for sublist in relevant_sents for item in sublist]
+    flat_relevant_sents = [item for sublist in relevant_sents_path for item in sublist]
     tokenized_relevant_sents = tokenizer(flat_relevant_sents, add_special_tokens=False)
     total_length_relevant_sents = sum(len(ids) for ids in tokenized_relevant_sents['input_ids'])
 
     if total_length_relevant_sents > max_length:
-        raise ValueError("The combined tokens of relevant_sents exceed the limit of 15,000 tokens.")
+        print(f"Total length of relevant sentences ({total_length_relevant_sents}) exceeds maximum length ({max_length}).")
+        return []
 
+    option_sentences_add = []
+    # Tokenize option sentences if we can
+    for option_sents in relevant_sents_opts:
+        tokenized_relevant_sents = tokenizer(option_sents, add_special_tokens=False)
+        len_tokens = sum(len(ids) for ids in tokenized_relevant_sents['input_ids'])
+        if len_tokens + total_length_relevant_sents <= max_length:
+            option_sentences_add.append(option_sents)
+    
+    relevant_sents = relevant_sents_path + option_sentences_add
+    flat_relevant_sents = [item for sublist in relevant_sents for item in sublist]
     set_relevant_sents = set(flat_relevant_sents)
     to_include = set()
     current_length = total_length_relevant_sents
@@ -707,11 +720,13 @@ def get_random_entities(query_path, wikidata_util):
         random_entities.append(pos_ents)
     return random_entities
 
-def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5, shuffle_context=True):
+def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5, shuffle_context=True, max_context_length=30000):
     while True:
         distractor=None
         node_distracted=None
         query_results = graph_algos.generate_random_query(k, return_path=True, source=source) # allow sampling with replacement
+        if query_results is None:
+            return None
         all_distractors = []
         if distractor_query:
             distractor_tuple = graph_algos.get_best_distractor(query_results[1], query_results[3])
@@ -737,14 +752,19 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         #         node_distracted = random_distractor_parent
         options = generate_answer_options(true_ids_path[-1], all_distractors, list(reversed(true_ids_path)), get_random_entities(list(reversed(true_ids_path)), graph_algos.graph), graph_algos.graph)
         relevant_context_list = form_context_list(true_ids_path, graph_text_edge, graph_algos.graph, entity_top_alias=id2name)
+        
+        relevant_options_context_list = []
         for ent, parent_ent in options:
             relevant_text = graph_text_edge[parent_ent][ent]
-            if type(relevant_text) == list:
-                relevant_text = ' '.join(relevant_text)
-            relevant_context_list.append(relevant_text)
+            # if type(relevant_text) == list:
+            #     relevant_text = ' '.join(relevant_text)
+            relevant_options_context_list.append(relevant_text)
         
         all_context = get_all_context(true_ids_path + [ent for ent, _ in options], graph_text_sentencized)
-        context_list = create_context_list(all_context, relevant_context_list, tokenizer, max_length=30000)
+        context_list = create_context_list(all_context, relevant_context_list, relevant_options_context_list, tokenizer, max_length=max_context_length)
+        if len(context_list) == 0:
+            print(f"path ids true: {true_ids_path}, query: {query}, options: {options}")
+            raise ValueError("Tokenizer exceeded")
         if distractor is not None:
             ids_path.append(distractor)
             distractor_text = graph_text_edge[node_distracted][distractor]

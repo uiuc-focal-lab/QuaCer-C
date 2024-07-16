@@ -22,7 +22,7 @@ import os
 BATCH_NUM = 1
 qa_model = None
 checker_host, checker_port = None, None
-GPU_MAP = {0: "12GiB", 1: "0GiB", 2: "0GiB", 3: "26GiB", "cpu":"120GiB"}
+GPU_MAP = {0: "34GiB", 1: "0GiB", 2: "10GiB", 3: "0GiB", "cpu":"120GiB"}
 INPUT_DEVICE = 'cuda:0'
 
 def get_args():
@@ -87,9 +87,34 @@ def load_model(model_name="mistralai/Mistral-7B-Instruct-v0.2", only_tokenizer=F
     # bnb_4bit_compute_dtype=torch.float16)
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
         # model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.bfloat16, load_in_8bit=True)
+        # if '<pad>' not in tokenizer.get_vocab():
+        #     # Add the pad token
+        #     tokenizer.add_special_tokens({"pad_token":"<pad>"})
+        # model.resize_token_embeddings(len(tokenizer))
+        # model.config.pad_token_id = tokenizer.pad_token_id
+        # assert model.config.pad_token_id == tokenizer.pad_token_id, "The model's pad token ID does not match the tokenizer's pad token ID!"
+        # tokenizer.padding_side = 'right'
         return tokenizer, model
     else:
         return tokenizer, None
+
+# def query_mistral_model(prompts: list[str], model, tokenizer, do_sample=True, top_k=10, 
+#                 num_return_sequences=1, max_length=240, temperature=1.0):
+#     global INPUT_DEVICE
+#     # preprocess prompts:
+#     assert len(prompts) == BATCH_NUM
+#     chats = []
+#     for prompt in prompts:
+#         message_template = {"role":"user", "content":f"{prompt}"}
+#         chats.append([copy.deepcopy(message_template)])
+    
+#     input_ids = tokenizer.apply_chat_template(chats, return_tensors="pt", padding=True).to(INPUT_DEVICE)
+#     generated_ids= model.generate(input_ids, max_new_tokens=80, pad_token_id=tokenizer.eos_token_id, do_sample=True, temperature=1.0)
+#     responses = tokenizer.batch_decode(generated_ids[:, input_ids.shape[-1]:].detach().cpu(), skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    
+#     del input_ids, generated_ids
+
+#     return responses
 
 def query_mistral_model(prompts: list[str], model, tokenizer, do_sample=True, top_k=10, 
                 num_return_sequences=1, max_length=240, temperature=1.0):
@@ -141,6 +166,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 correct_ids = queries_data[i]['correct_ids']
                 distractor = queries_data[i]['distractor']
                 model_ans = model_answers[i]
+                # print(f"Model ans: {model_ans}")
                 eval_ans = 0
                 for num_correct, correct_answer in enumerate(correct_answers):
                     eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_ids[num_correct], correct_answer_num=queries_data[i]['correct_ans_num'])
@@ -183,7 +209,7 @@ def main():
     all_times = []
     qa_graph_algos = GraphAlgos(qa_graph, entity_aliases, relation_aliases)
     # best_vertices = qa_graph_algos.get_best_vertices(num=1000)
-    best_vertices = ['Q200482', 'Q2805655', 'Q36740', 'Q1911276', 'Q453934', 'Q3740786', 'Q36033', 'Q1596236', 'Q1124384', 'Q2062573', 'Q7958900', 'Q931739', 'Q2090699', 'Q505788', 'Q5981732', 'Q1217787', 'Q115448', 'Q5231203', 'Q2502106', 'Q1793865', 'Q329988', 'Q546591', 'Q229808', 'Q974437', 'Q219776', 'Q271830', 'Q279164', 'Q76508', 'Q20090095', 'Q245392', 'Q2546120', 'Q312408', 'Q6110803', 'Q10546329', 'Q211196', 'Q18407657', 'Q18602670', 'Q21979809', 'Q23010088', 'Q1338555', 'Q5516100', 'Q6499669', 'Q1765358', 'Q105624', 'Q166262', 'Q33', 'Q31', 'Q36', 'Q16', 'Q96']
+    best_vertices = ['Q38', 'Q1055', 'Q838292', 'Q34433', 'Q254', 'Q31', 'Q270', 'Q200482', 'Q36740', 'Q1911276', 'Q3740786', 'Q1124384', 'Q931739', 'Q2090699', 'Q505788', 'Q1217787', 'Q115448', 'Q2502106', 'Q1793865', 'Q229808', 'Q974437', 'Q219776', 'Q271830', 'Q279164', 'Q76508', 'Q245392', 'Q2546120', 'Q312408', 'Q6110803', 'Q211196', 'Q18407657', 'Q18602670', 'Q21979809', 'Q23010088', 'Q1338555', 'Q5516100', 'Q1765358', 'Q105624', 'Q166262', 'Q33', 'Q31', 'Q36', 'Q16', 'Q96']
     # random.shuffle(best_vertices)
     already_done = []
     if not os.path.exists(args.results_dir):
