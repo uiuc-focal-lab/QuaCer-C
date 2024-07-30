@@ -9,7 +9,7 @@ from experiment_utils import *
 
 BATCH_NUM = 1
 qa_model = None
-GPU_MAP = {0: "6GiB", 1: "8GiB", 2: "8GiB", 3: "8GiB", "cpu":"120GiB"}
+GPU_MAP = {0: "15GiB", 1: "15GiB", 2: "15GiB", 3: "15GiB", "cpu":"120GiB"}
 INPUT_DEVICE = 'cuda:1'
 
 def get_args():
@@ -62,7 +62,7 @@ def query_model(prompts, model, tokenizer, do_sample=True, top_k=10,
         tokenizer.eos_token_id,
         tokenizer.convert_tokens_to_ids("<|eot_id|>")
     ]
-    generated_ids= model.generate(input_ids, max_new_tokens=80, do_sample=True, eos_token_id=terminators, temperature=1)
+    generated_ids= model.generate(input_ids, max_new_tokens=80, do_sample=do_sample, eos_token_id=terminators, temperature=temperature)
     responses = tokenizer.batch_decode(generated_ids[:, input_ids.shape[-1]:].detach().cpu(), skip_special_tokens=True, clean_up_tokenization_spaces=True)
     
     del input_ids, generated_ids

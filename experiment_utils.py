@@ -38,7 +38,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], options=options_str, few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
                 queries_data.append(query_data)
-            model_answers= query_model(prompts, qa_model, tokenizer, temperature=1.0, INPUT_DEVICE=INPUT_DEVICE)
+            model_answers= query_model(prompts, qa_model, tokenizer, temperature=0.0000001, INPUT_DEVICE=INPUT_DEVICE, do_sample=False)
             for i, model_ans in enumerate(model_answers):
                 model_ans = model_ans.strip()
                 model_answers[i] = model_ans
@@ -52,7 +52,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 correct_ids = queries_data[i]['correct_ids']
                 distractor = queries_data[i]['distractor']
                 model_ans = model_answers[i]
-                print(f"Model ans: {model_ans}, correct_ans_num: {queries_data[i]['correct_ans_num']}, question: {query}")
+                # print(f"Model ans: {model_ans}, correct_ans_num: {queries_data[i]['correct_ans_num']}, question: {query}")
                 eval_ans = 0
                 for num_correct, correct_answer in enumerate(correct_answers):
                     # eval_ans = check_answer(question=query, correct_answer=correct_answer, model_answer=model_ans, entity_aliases=entity_aliases, correct_id=correct_ids[num_correct], correct_answer_num=queries_data[i]['correct_ans_num'])
@@ -66,7 +66,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                                 'distractor':distractor, 'correct_ids':correct_ids, 'options':queries_data[i]['answer_options'], 'correct_ans_num':queries_data[i]['correct_ans_num']})
                 correct += results[-1]['result'][0]
                 total += 1
-            print(f'Completed {num_iter} queries, {correct} correct out of {total} total')
+            print(f'Completed {num_iter+1} queries, {correct} correct out of {total} total')
             interval_conf = proportion_confint(correct, total, method='beta', alpha=0.05)
             low = float(interval_conf[0])
             up = float(interval_conf[1])

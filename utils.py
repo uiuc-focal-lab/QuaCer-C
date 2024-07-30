@@ -102,6 +102,8 @@ def sort_vertices_by_measure(graph, k, weights):
     for key, value in num_neighbors.items():
         if key[1] <= 0:
             continue
+        if num_neighbors[(key[0], key[1]-1)] == 0:
+            continue
         measure[key[0]] += (value/num_neighbors[(key[0], key[1]-1)]) * weights[key[1]]
     # Sort vertices based on the measure
     sorted_vertices = sorted(measure, key=measure.get, reverse=True)
@@ -651,7 +653,7 @@ def dumb_checker(model_answer, correct_answer_num):
     """
     model_answer = unidecode(model_answer).lower()
     correct_answer_num = unidecode(str(correct_answer_num)).lower()
-    pattern = r'\bcorrect answer: [\[<{(]?' + re.escape(correct_answer_num) + '[\]>})]?[.]?'
+    pattern = r'\bcorrect answer: \s*\**\s*[\[<{(]?' + re.escape(correct_answer_num) + '\s*\**\s*[\]>})]?[.]?'
     matches = re.search(pattern, model_answer)
     if matches:
         return 1
@@ -659,6 +661,19 @@ def dumb_checker(model_answer, correct_answer_num):
 
 def create_context_list(all_sents, relevant_sents_path, relevant_sents_opts, tokenizer, max_length=15000):
     # Flatten relevant_sents and calculate its total tokenized length
+    if tokenizer is None:
+        #for API only models
+        combined_list = []
+        all_sents_set = set()
+        for a_sublist in all_sents:
+            add_list = []
+            for a_item in a_sublist:
+                if a_item not in add_list and a_item not in all_sents_set:
+                    add_list.append(a_item)
+                    all_sents_set.add(a_item)
+            if len(add_list) > 0:
+                combined_list.append(add_list)
+        return combined_list
     flat_relevant_sents = [item for sublist in relevant_sents_path for item in sublist]
     tokenized_relevant_sents = tokenizer(flat_relevant_sents, add_special_tokens=False)
     total_length_relevant_sents = sum(len(ids) for ids in tokenized_relevant_sents['input_ids'])
@@ -719,6 +734,7 @@ def get_random_entities(query_path, wikidata_util):
         pos_ents = list(wikidata_util[parent_ent].keys())
         random_entities.append(pos_ents)
     return random_entities
+
 
 def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=False, k=5, shuffle_context=True, max_context_length=30000):
     while True:

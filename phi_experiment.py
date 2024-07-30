@@ -9,12 +9,13 @@ from experiment_utils import *
 
 BATCH_NUM = 1
 qa_model = None
-GPU_MAP = {0: "40GiB", 1: "40GiB", 2: "40GiB", 3: "40GiB", "cpu":"120GiB"}
+GPU_MAP = {0: "40GiB", 1: "40GiB", 2: "40GiB", 3: "0GiB", "cpu":"120GiB"}
 INPUT_DEVICE = 'cuda:1'
-MAX_CONTEXT_LEN = 28000
+MODEL_CONTEXT_LEN = 120000
+
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
-    parser.add_argument('--qa_llm', type=str, default='mistralai/Mistral-7B-Instruct-v0.2')
+    parser.add_argument('--qa_llm', type=str, default='microsoft/Phi-3-mini-128k-instruct')
     parser.add_argument('--qa_graph_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_util.json')
     parser.add_argument('--context_graph_edge_path', type=str, default='/home/vvjain3/new_repo/rag-llm-verify/wikidata_graphs/wikidata_text_edge.json')
     parser.add_argument('--results_dir', type=str, default='final_results/mistral_distractorfull/')
@@ -30,44 +31,42 @@ def get_args():
     parser.add_argument('--num_certificates', type=int, default=50)
     return parser.parse_args()
 
-def load_model(model_name="mistralai/Mistral-7B-Instruct-v0.2", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}):
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
+def load_model(model_name="lmicrosoft/Phi-3-mini-128k-instruct", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     if not only_tokenizer:
-    #     model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, load_in_4bit=True, bnb_4bit_quant_type="nf4",
-    # bnb_4bit_compute_dtype=torch.float16)
-        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
-        # model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.bfloat16, load_in_8bit=True)
-        # if '<pad>' not in tokenizer.get_vocab():
-        #     # Add the pad token
-        #     tokenizer.add_special_tokens({"pad_token":"<pad>"})
-        # model.resize_token_embeddings(len(tokenizer))
-        # model.config.pad_token_id = tokenizer.pad_token_id
+        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16, trust_remote_code=True)
         # assert model.config.pad_token_id == tokenizer.pad_token_id, "The model's pad token ID does not match the tokenizer's pad token ID!"
-        # tokenizer.padding_side = 'right'
         return tokenizer, model
     else:
         return tokenizer, None
 
-def query_model(prompts, qa_model, tokenizer, do_sample=True, top_k=10, 
+def query_model(prompts, model, tokenizer, do_sample=True, top_k=10, 
                 num_return_sequences=1, max_length=240, temperature=1.0, INPUT_DEVICE='cuda:0'):
     # preprocess prompts:
-    assert len(prompts) == 1
+    PHI_SYS_PROMPT = "You are a helpful AI assistant. who answers multiple choice reasoning questions in a specified format choosing from only the options available"
+    chats = []
+    if len(prompts) > 1:
+        for prompt in prompts:
+            message_template = [{"role": "system", "content": PHI_SYS_PROMPT}, {"role":"user", "content":f"{prompt}"}]
+            chats.append([copy.deepcopy(message_template)])
+    else:
+        chats = [{"role": "system", "content": PHI_SYS_PROMPT}, {"role":"user", "content":f"{prompts[0]}"}]
+        
+    input_ids = tokenizer.apply_chat_template(chats, return_tensors="pt", add_generation_prompt=True, padding=True).to(INPUT_DEVICE)
+    if input_ids.shape[-1] > 128000:
+        print("Input too long, input too long, number of tokens: ", input_ids.shape)
+        input_ids = input_ids[:, :128000]
+    generated_ids= model.generate(input_ids, max_new_tokens=max_length, do_sample=do_sample, temperature=temperature)
+    responses = tokenizer.batch_decode(generated_ids[:, input_ids.shape[-1]:].detach().cpu(), skip_special_tokens=True, clean_up_tokenization_spaces=True)
     
-    messages = [{"role": "user", "content": f"{prompts[0]}"},]
+    del input_ids, generated_ids
 
-    encodeds = tokenizer.apply_chat_template(messages, return_tensors="pt")
-    model_inputs = encodeds.to(INPUT_DEVICE)
-    generated_ids = qa_model.generate(model_inputs, max_new_tokens=max_length, do_sample=do_sample, temperature=temperature)
-
-    generated_ids = generated_ids[:, model_inputs.shape[-1]:]
-    decoded = tokenizer.batch_decode(generated_ids.detach().cpu())
-    model_ans = decoded[0].strip()
-    return [model_ans]
+    return responses
 
 def main():
     args = get_args()
     all_times, num_certificates_generated = run_experiment(args, load_model=load_model, query_model_func=query_model, 
-                                                           GPU_MAP=GPU_MAP, BATCH_NUM=BATCH_NUM, INPUT_DEVICE=INPUT_DEVICE, model_context_length=MAX_CONTEXT_LEN)
+                                                           GPU_MAP=GPU_MAP, BATCH_NUM=BATCH_NUM, INPUT_DEVICE=INPUT_DEVICE, model_context_length=MODEL_CONTEXT_LEN)
     print(f'Completed {num_certificates_generated} certificates')
     print(f'Average time = {np.mean(all_times)}')
 if __name__ == '__main__':
