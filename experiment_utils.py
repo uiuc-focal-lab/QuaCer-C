@@ -33,7 +33,6 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 query_data = None
                 while query_data is None:
                     query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k, shuffle_context=shuffle_context, max_context_length=model_context_length)
-                    print('Trying query data again because None')
                 options_str = '\n'.join([f'{i+1}. {id2name[option]}' for i, option in enumerate(query_data['answer_options'])])
                 prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], options=options_str, few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
