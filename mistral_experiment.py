@@ -9,8 +9,8 @@ from experiment_utils import *
 
 BATCH_NUM = 1
 qa_model = None
-GPU_MAP = {0: "40GiB", 1: "40GiB", 2: "40GiB", 3: "40GiB", "cpu":"120GiB"}
-INPUT_DEVICE = 'cuda:1'
+GPU_MAP = {0: "0GiB", 1: "0GiB", 2: "25GiB", 3: "25GiB", "cpu":"120GiB"}
+INPUT_DEVICE = 'cuda:2'
 MAX_CONTEXT_LEN = 28000
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
