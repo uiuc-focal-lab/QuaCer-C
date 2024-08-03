@@ -5,3 +5,4 @@ unidecode
 torch
 fastchat
 accelerate
+bitsandbytes
