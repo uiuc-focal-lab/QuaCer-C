@@ -154,7 +154,14 @@ def generate_answer_options(correct_ans, distractors, path_entities, random_enti
         random_options.extend(random.sample(pos_ents, min(num_random, len(pos_ents))))  
     options.extend(random_options)
     if len(options) >= min_num_options:
-        options = options[:min_num_options]
+        options = options[:min_num_options] #ensure correct answer is in the options as it is at index 0
+        random.shuffle(options)
+    else:
+        #in case we still don't have enough options, override num_random on origin vertex to get more options
+        origin_vertex = path_entities[-1]
+        pos_ents = [(ent, origin_vertex) for ent in random_entities[-1] if (ent, origin_vertex) not in options]
+        options_needed = min(min_num_options - len(options), len(pos_ents))
+        options.extend(random.sample(pos_ents, options_needed))
         random.shuffle(options)
     return options
         

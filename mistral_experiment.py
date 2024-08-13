@@ -9,8 +9,8 @@ from experiment_utils import *
 
 BATCH_NUM = 1
 qa_model = None
-GPU_MAP = {0: "0GiB", 1: "0GiB", 2: "25GiB", 3: "25GiB", "cpu":"120GiB"}
-INPUT_DEVICE = 'cuda:2'
+GPU_MAP = {0: "15GiB", 1: "15GiB", 2: "0GiB", 3: "10GiB", "cpu":"120GiB"}
+INPUT_DEVICE = 'cuda:0'
 MAX_CONTEXT_LEN = 28000
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
@@ -30,20 +30,19 @@ def get_args():
     parser.add_argument('--num_certificates', type=int, default=50)
     return parser.parse_args()
 
-def load_model(model_name="mistralai/Mistral-7B-Instruct-v0.2", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}):
+def load_model(model_name="mistralai/Mistral-7B-Instruct-v0.2", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}, quant_type=None):
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
     if not only_tokenizer:
-    #     model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, load_in_4bit=True, bnb_4bit_quant_type="nf4",
-    # bnb_4bit_compute_dtype=torch.float16)
+        if quant_type is not None:
+            if quant_type == '8_bit':
+                print("loading 8 bit model")
+                model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16, load_in_8bit=True)
+            elif quant_type == '4_bit':
+                print("loading 4 bit model")
+                model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, bnb_4bit_quant_type="nf4", load_in_4bit=True,  bnb_4bit_compute_dtype=torch.float16)
+        else:    
+            model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
-        # model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.bfloat16, load_in_8bit=True)
-        # if '<pad>' not in tokenizer.get_vocab():
-        #     # Add the pad token
-        #     tokenizer.add_special_tokens({"pad_token":"<pad>"})
-        # model.resize_token_embeddings(len(tokenizer))
-        # model.config.pad_token_id = tokenizer.pad_token_id
-        # assert model.config.pad_token_id == tokenizer.pad_token_id, "The model's pad token ID does not match the tokenizer's pad token ID!"
-        # tokenizer.padding_side = 'right'
         return tokenizer, model
     else:
         return tokenizer, None

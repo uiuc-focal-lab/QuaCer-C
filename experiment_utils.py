@@ -79,7 +79,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
 def load_experiment_setup(args, load_model, GPU_MAP):
     if not os.path.exists(args.results_dir):
         os.makedirs(args.results_dir)
-    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP)
+    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP, quant_type=args.quant_type)
     qa_graph = json.load(open(args.qa_graph_path))
     context_graph_edge = json.load(open(args.context_graph_edge_path))
     graph_text_sentencized = json.load(open(args.sentencized_path))

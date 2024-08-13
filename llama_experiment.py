@@ -6,11 +6,12 @@ import torch
 import argparse
 import copy
 from experiment_utils import *
+from transformers import BitsAndBytesConfig
 
 BATCH_NUM = 1
 qa_model = None
-GPU_MAP = {0: "15GiB", 1: "15GiB", 2: "15GiB", 3: "15GiB", "cpu":"120GiB"}
-INPUT_DEVICE = 'cuda:1'
+GPU_MAP = {0: "0GiB", 1: "0GiB", 2: "30GiB", 3: "0GiB", "cpu":"120GiB"}
+INPUT_DEVICE = 'cuda:2'
 
 def get_args():
     parser = argparse.ArgumentParser('Run Global experiments')
@@ -25,15 +26,24 @@ def get_args():
     parser.add_argument('--distractor_query', action='store_true', default=False, help=' best distractor based query?')
     parser.add_argument('--shuffle_context', action='store_true', default=False, help='Shuffle context in the context of query?')
     parser.add_argument('--k', type=int, default=4)
+    parser.add_argument('--quant_type', type=str, default=None, choices=['8_bit', '4_bit'])
 
     parser.add_argument('--num_queries', type=int, default=1000)
     parser.add_argument('--num_certificates', type=int, default=50)
     return parser.parse_args()
 
-def load_model(model_name="lmsys/vicuna-13b-v1.5", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}):
+def load_model(model_name="lmsys/vicuna-13b-v1.5", only_tokenizer=False, gpu_map={0: "26GiB", 1: "0GiB", 2: "0GiB", 3: "0GiB", "cpu":"120GiB"}, quant_type=None):
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left')
     if not only_tokenizer:
-        model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
+        if quant_type is not None:
+            if quant_type == '8_bit':
+                print("loading 8 bit model")
+                model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16, load_in_8bit=True)
+            elif quant_type == '4_bit':
+                print("loading 4 bit model")
+                model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, bnb_4bit_quant_type="nf4", load_in_4bit=True,  bnb_4bit_compute_dtype=torch.float16)
+        else:    
+            model = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', max_memory=gpu_map, torch_dtype=torch.float16)
         tokenizer.pad_token = tokenizer.eos_token
         model.config.pad_token_id = tokenizer.pad_token_id
         assert model.config.pad_token_id == tokenizer.pad_token_id, "The model's pad token ID does not match the tokenizer's pad token ID!"
