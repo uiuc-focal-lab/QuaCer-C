@@ -33,6 +33,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
                 query_data = None
                 while query_data is None:
                     query_data = get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sentencized, tokenizer, distractor_query=distractor_query, k=k, shuffle_context=shuffle_context, max_context_length=model_context_length)
+                    
                 options_str = '\n'.join([f'{i+1}. {id2name[option]}' for i, option in enumerate(query_data['answer_options'])])
                 prompt = LLM_PROMPT_TEMPLATE.format(context=query_data['context'], query=query_data['query'], options=options_str, few_shot_examples=FEW_SHOT_EXAMPLES)
                 prompts.append(prompt)
@@ -76,6 +77,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, graph_text_sentencized, en
         print(f'Completed {num_queries} queries, {correct} correct out of {total} total')
     return results, correct, total
 
+
 def load_experiment_setup(args, load_model, GPU_MAP):
     if not os.path.exists(args.results_dir):
         os.makedirs(args.results_dir)
@@ -84,6 +86,37 @@ def load_experiment_setup(args, load_model, GPU_MAP):
     context_graph_edge = json.load(open(args.context_graph_edge_path))
     graph_text_sentencized = json.load(open(args.sentencized_path))
     id2name = json.load(open(args.id2name_path))
+    entity_aliases = load_aliases(args.entity_aliases_path)
+    relation_aliases = load_aliases(args.relation_aliases_path)
+    print(f"Best Distractor Task: {args.distractor_query}")
+    qa_graph_algos = GraphAlgos(qa_graph, entity_aliases, relation_aliases)
+    # best_vertices = qa_graph_algos.get_best_vertices(num=1000)
+    best_vertices =  ['Q38', 'Q1055', 'Q838292', 'Q34433', 'Q254', 'Q31', 'Q270', 'Q200482', 'Q36740', 'Q1911276', 'Q3740786', 'Q1124384', 'Q931739', 'Q2090699', 'Q505788', 'Q1217787', 'Q115448', 'Q2502106', 'Q1793865', 'Q229808', 'Q974437', 'Q219776', 'Q271830', 'Q279164', 'Q76508', 'Q245392', 'Q2546120', 'Q312408', 'Q6110803', 'Q211196', 'Q18407657', 'Q18602670', 'Q21979809', 'Q23010088', 'Q1338555', 'Q5516100', 'Q1765358', 'Q105624', 'Q166262', 'Q33', 'Q36', 'Q16', 'Q96', 'Q36687', 'Q282995', 'Q858401', 'Q850087', 'Q864534', 'Q291244', 'Q159', 'Q668', 'Q211', 'Q183', 'Q1603', 'Q408', 'Q218'][:50]
+    # random.shuffle(best_vertices)
+    if not os.path.exists(args.results_dir):
+        os.makedirs(args.results_dir, exist_ok=True)
+    
+    return qa_graph_algos, context_graph_edge, graph_text_sentencized, entity_aliases, relation_aliases, id2name, qa_model, tokenizer, best_vertices
+
+import string
+
+def load_abstract_experiment_setup(args, load_model, GPU_MAP):
+    if not os.path.exists(args.results_dir):
+        os.makedirs(args.results_dir)
+    tokenizer, qa_model = load_model(args.qa_llm, only_tokenizer=False, gpu_map=GPU_MAP, quant_type=args.quant_type)
+    qa_graph = json.load(open(args.qa_graph_path))
+    id2name = {qg: ''.join(random.choices(string.ascii_uppercase + string.digits + string.ascii_lowercase, k=10)) for qg in qa_graph}
+    context_graph_edge = {}
+    graph_text_sentencized = {}
+    for node1, edges in qa_graph.items():
+        context_graph_edge[node1] = {}
+        all_sents = []
+        for node2, rel in edges.items():
+            cont = f'{node1} is related to {node2} by "{rel}".'{}
+            context_graph_edge[node1][node2] = cont
+            all_sents.append(cont)
+        graph_text_sentencized[node1] = all_sents
+
     entity_aliases = load_aliases(args.entity_aliases_path)
     relation_aliases = load_aliases(args.relation_aliases_path)
     print(f"Best Distractor Task: {args.distractor_query}")

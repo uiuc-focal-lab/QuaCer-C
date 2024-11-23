@@ -598,7 +598,7 @@ def load_aliases(path):
         for line in f:
             line = line.strip()
             line = line.split('\t')
-            line = [x.strip() for x in line]
+            line = [x.s trip() for x in line]
             possible_entities[line[0]] = line[1:]
     return possible_entities
 
@@ -807,3 +807,5 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         answer_options = [ent for ent, _ in options]
         random.shuffle(answer_options)
         return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': answer_options, 'correct_ans_num': answer_options.index(true_ids_path[-1])+1}
+    
+    
