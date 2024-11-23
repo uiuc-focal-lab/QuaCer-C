@@ -20,18 +20,36 @@ import math
 FEW_SHOT_EXAMPLES = """
 Example questions and correct answers:
 Common Context: entity_B is the son of entity_A. entity_E is the sister of entity_A. entity_B leads entity_C. Entity_D is a member of Entity_C. Entity_D is a friend of entity_E. entity_E has mother entity_F who likes the services of entity_C.
-question 1: entity_A->(father of)->(land of)->?
+question 1: entity_A->(father of)->(leader of)->?
 Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_B
 answer: 2. entity_C
-explanation: entity_A->(father of)entity_B->(land of)entity_C
+explanation: entity_A->(father of)entity_B->(leader of)entity_C
 how to get answer: find who entity_A is father of to get entity_B, then find what B is the leader of to get entity_C which the final answer.
 
 question 2: entity_B->(chief of)->(constitues)->(companion of)->?
 Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
 answer: 4. entity_E
 explanation: entity_B->(chief of)entity_C->(constitues)entity_D->(companion of)entity_E
-how to get answer: find what entity_B is the chief of to get entity_C, find what entity_C constitutes of to get entity_D, then find the companion of entity_D is the land of to get entity_E.
+how to get answer: find what entity_B is the chief of to get entity_C, find what entity_C constitutes of to get entity_D, then find the companion of entity_D of to get entity_E.
 """
+
+# question 3: entity_C->(has membership of)->(friend)->(mom)->?
+# Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
+# answer: 1. entity_F
+# explanation: entity_C->(has membership of)entity_D->(friend)entity_E->(mom)entity_F
+# how to get answer: find who entity_C has membership of to get entity_D, find who is the friend of entity_D to get entity_E, then find the mom of entity_E to get entity_F.
+
+# question 4: entity_A->(sister)->(mother)->?
+# Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
+# answer: 5. entity_F
+# explanation: entity_A->(sister)entity_E->(mother)entity_F
+# how to get answer: find who entity_A's sister is to get entity_E, then find the mother of entity_E to get entity_F.
+
+# question 5: entity_A->(son)->(leader)->(member)->(friend)?
+# Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
+# answer: 3. entity_E
+# explanation: entity_A->(son)entity_B->(leader)entity_C->(member)entity_D->(friend)entity_E
+# how to get answer: find who entity_A's son is to get entity_B, then find the leader of entity_B to get entity_C, find the member of entity_C to get entity_D, then find the friend of entity_D to get entity_E.
 
 LLM_PROMPT_TEMPLATE = """
 {few_shot_examples}
@@ -52,15 +70,15 @@ correct answer: <option_number>. <answer>, because <succinct reason>
 follow this exact format and only choose from the given options
 """
 
-CHECKER_INITIAL_PROMPT = f"""
-You are a correct answer evaluator. Your inputs will consist of a question and a correct answer, and a answer from a model.
-The questions will be of the form:
-{FEW_SHOT_EXAMPLES}
+# CHECKER_INITIAL_PROMPT = f"""
+# You are a correct answer evaluator. Your inputs will consist of a question and a correct answer, and a answer from a model.
+# The questions will be of the form:
+# {FEW_SHOT_EXAMPLES}
 
-Your response should start with 'correct' or 'wrong' based on whether the model's answer means the correct answer in both technical and semantic terms.
+# Your response should start with 'correct' or 'wrong' based on whether the model's answer means the correct answer in both technical and semantic terms.
 
-Start response with 'correct' or 'wrong' only and nothing else. Then explain the reasons.
-"""
+# Start response with 'correct' or 'wrong' only and nothing else. Then explain the reasons.
+# """
 
 def sort_vertices_by_outdegree(graph):
     """
@@ -160,9 +178,9 @@ def generate_answer_options(correct_ans, distractors, path_entities, random_enti
         #in case we still don't have enough options, override num_random on origin vertex to get more options
         origin_vertex = path_entities[-1]
         pos_ents = [(ent, origin_vertex) for ent in random_entities[-1] if (ent, origin_vertex) not in options]
-        options_needed = min(min_num_options - len(options), len(pos_ents))
+        options_needed = min(min_num_options - len(options), len(pos_ents)) #ensure we only have min_num_options options
         options.extend(random.sample(pos_ents, options_needed))
-        random.shuffle(options)
+        random.shuffle(options) 
     return options
         
 
@@ -268,7 +286,6 @@ class GraphAlgos():
         :param k: The maximum depth to explore in the BFS (default: 5).
         :return: A list of vertices representing the found path, or None if no path is found within the specified depth.
         """
-        #bfs search for k depth
         queue = deque([[start]])
         visited = set()
         while queue:
@@ -313,33 +330,20 @@ class GraphAlgos():
         def query_path_aux(path):
             if len(path) == 1:
                 entity_alias = get_alias(path[0], self.entity_aliases)
-                # print(f"Entity Alias Found: {entity_alias}")
                 return entity_alias, entity_alias
             
             rel = self.get_relation_for_vertex(path[-2], path[-1])
             rel_alias = get_alias(rel, self.relation_aliases)
             rest_query, entity_alias = query_path_aux(path[:-1])
-            # rel_alias_clean = rel_alias.strip().lower()
-            # if rel_alias_clean.endswith('of' ):
-            #     rel_alias_add = rel_alias_clean[:-2]
-            #     query = f"that which has {rel_alias_add} {rest_query}"
-            #     print(f"Query: {query}, Entity: {entity_alias}, Rel: {rel_alias}, Path: {path}, Rest Query: {rest_query}")
-            #     return query, entity_alias
-            # else:
-            #     query = f"the {rel_alias} of {rest_query}"
-            #     print(f"NOT OF Query: {query}, Entity: {entity_alias}, Rel: {rel_alias}, Path: {path}, Rest Query: {rest_query}")
-            #     return query, entity_alias
             query = f"{rest_query}->({rel_alias}) "
             return query, entity_alias
             
         query = ""
         rest_query, entity_alias = query_path_aux(path)
         query += rest_query + '->?'
-        # print('Complete path query:', query, 'path:', path)
         return query, entity_alias, len(path)
     
     def generate_query_for_vertices(self, start, end, k=5, path=None):
-        #print(f"Generating query for {start} -> {end}")
         if path is None:
             path = self.get_path_for_vertices(start, end, k)
         if path is None:
@@ -404,7 +408,7 @@ class GraphAlgos():
             pos_distractors = [neighbor for neighbor in neighbors if neighbor not in path]
             for distractor in pos_distractors:
                 all_distractors_pos.append((distractor, cur_vertex))
-                distractor_weights.append(i+1)
+                distractor_weights.append(i)
                 
         if not do_choose:
             return all_distractors_pos
@@ -598,7 +602,7 @@ def load_aliases(path):
         for line in f:
             line = line.strip()
             line = line.split('\t')
-            line = [x.s trip() for x in line]
+            line = [x.strip() for x in line]
             possible_entities[line[0]] = line[1:]
     return possible_entities
 
@@ -620,33 +624,33 @@ def form_context_list(query_path, wikidata_text_edge, wikidata_util, entity_top_
         context_list.append(relevant_text)
     return context_list
 
-def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct_id):
-    """
-    Performs a simple check to see if the model answer is correct.
+# def simple_checker(model_answer, correct_answer, correct_answer_aliases, correct_id):
+#     """
+#     Performs a simple check to see if the model answer is correct.
 
-    Checks if the correct answer or any of its aliases are present in the model answer (case-insensitive).
+#     Checks if the correct answer or any of its aliases are present in the model answer (case-insensitive).
 
-    :param model_answer: The answer generated by the model.
-    :param correct_answer: The ground truth correct answer.
-    :param correct_answer_aliases: A dictionary mapping correct answer IDs to their aliases.
-    :param correct_id: The ID of the correct answer.
-    :return: 1 if the model answer is considered correct, 0 otherwise.
-    """
-    model_answer = unidecode(model_answer).lower()
-    correct_answer = unidecode(correct_answer).lower()
-    pattern = r'\b' + re.escape(correct_answer) + r'\b'
-    matches = re.search(pattern, model_answer)
-    if matches:
-        return 1
+#     :param model_answer: The answer generated by the model.
+#     :param correct_answer: The ground truth correct answer.
+#     :param correct_answer_aliases: A dictionary mapping correct answer IDs to their aliases.
+#     :param correct_id: The ID of the correct answer.
+#     :return: 1 if the model answer is considered correct, 0 otherwise.
+#     """
+#     model_answer = unidecode(model_answer).lower()
+#     correct_answer = unidecode(correct_answer).lower()
+#     pattern = r'\b' + re.escape(correct_answer) + r'\b'
+#     matches = re.search(pattern, model_answer)
+#     if matches:
+#         return 1
 
-    if correct_id not in correct_answer_aliases:
-        return 0
-    for answer_alias in correct_answer_aliases[correct_id]:
-        pattern = r'\b' + re.escape(unidecode(answer_alias).lower()) + r'\b'
-        matches = re.search(pattern, model_answer)
-        if matches:
-            return 1
-    return 0
+#     if correct_id not in correct_answer_aliases:
+#         return 0
+#     for answer_alias in correct_answer_aliases[correct_id]:
+#         pattern = r'\b' + re.escape(unidecode(answer_alias).lower()) + r'\b'
+#         matches = re.search(pattern, model_answer)
+#         if matches:
+#             return 1
+#     return 0
 
 def dumb_checker(model_answer, correct_answer_num):
     """
@@ -779,8 +783,6 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         relevant_options_context_list = []
         for ent, parent_ent in options:
             relevant_text = graph_text_edge[parent_ent][ent]
-            # if type(relevant_text) == list:
-            #     relevant_text = ' '.join(relevant_text)
             relevant_options_context_list.append(relevant_text)
         
         all_context = get_all_context(true_ids_path + [ent for ent, _ in options], graph_text_sentencized)
@@ -806,6 +808,6 @@ def get_query_data(graph_algos, source, id2name, graph_text_edge, graph_text_sen
         context += f"\n{rel_context}"
         answer_options = [ent for ent, _ in options]
         random.shuffle(answer_options)
-        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': answer_options, 'correct_ans_num': answer_options.index(true_ids_path[-1])+1}
-    
-    
+        return {'query':query, 'correct_answers':[id2name[correct_id] for correct_id in correct_ids], 'path_id':true_ids_path, 
+                'path_en':path, 'context':context, 'correct_ids':correct_ids, 'distractor':distractor, 'answer_options': answer_options, 
+                'correct_ans_num': answer_options.index(true_ids_path[-1])+1}
