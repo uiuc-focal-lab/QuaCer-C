@@ -187,7 +187,7 @@ def generate_answer_options(correct_ans, distractors, path_entities, random_enti
         
 
 class GraphAlgos():
-    def __init__(self, graph: dict, entity_aliases:dict, relation_aliases:dict) -> None:
+    def __init__(self, graph: dict, entity_aliases:dict, relation_aliases:dict, allow_multiple_ans=False) -> None:
         """
         Initializes the GraphAlgos object with the given graph and alias dictionaries.
 
@@ -198,6 +198,7 @@ class GraphAlgos():
         all_vertices = set(graph.keys()) | {neighbor for neighbors in graph.values() for neighbor in neighbors.keys()}
         self.graph = {vertex: graph.get(vertex, {}) for vertex in all_vertices}
         self.rel2ent_graph = {vertex: {rel:[]  for rel in neighbors.values()} for vertex, neighbors in graph.items()}
+        self.multi_ans = allow_multiple_ans
         for vertex, neighbors in self.graph.items():
             if vertex not in self.rel2ent_graph:
                 assert self.graph[vertex] == {}, f"Vertex {vertex} in graph but not in rel2ent_graph"
@@ -319,6 +320,8 @@ class GraphAlgos():
             return []
         possible_paths = []
         for neighbor in neighbors:
+            if len(possible_paths) > 100:
+                break
             possible_neighbor_paths = self.get_queries_for_relpath(rel_path[1:], neighbor)
             if len(possible_neighbor_paths) == 0:
                 continue
@@ -374,6 +377,7 @@ class GraphAlgos():
             else:
                 start = source
             path = self.dfs_path(start, path_len)
+            print(f"Path: {path}")
             #check if path in unique
             if path is not None:
                 rel_path = [self.get_relation_for_vertex(path[i], path[i+1]) for i in range(len(path)-1)]
@@ -381,8 +385,10 @@ class GraphAlgos():
                 #     path = None #answer should be unique
                 #     continue
                 possible_paths = self.get_queries_for_relpath(rel_path, start)
+                print(f"Possible Paths: {len(possible_paths)}")
                 assert len(possible_paths) > 0, f"No possible paths found for {start} -> {path[-1]}"
-                if len(possible_paths) > 1:
+                if len(possible_paths) > 1 and not self.multi_ans:
+                    print(f" here")
                     path = None #not unique
             i += 1
         return path
