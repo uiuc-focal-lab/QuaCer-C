@@ -9,7 +9,13 @@ def least_side_effects_discoverer(graph, id2name):
     # Random disease sampling
     disease_nodes = list(graph.keys())
     random.shuffle(disease_nodes)
-    
+    questions_aliases = ['Which drug used to treat {0} has the least number of side effects?',
+                         'Which medication has the fewest side effects for {0}?',
+'Suppose person has {0}. Which medication could cause the minimum number of side effects?',
+'What treatment for {0} reports the lowest instances of adverse effects?',
+'Which drug for {0} is associated with the fewest side effects?',
+'Which medication for {0} has the fewest number of documented side effects?'
+]
     for disease in disease_nodes:
         if len(found_queries) >= MAX_BUFFER:
             break
@@ -48,7 +54,7 @@ def least_side_effects_discoverer(graph, id2name):
                     for se in drug_side_effects[chosen_drug]
                 ])
                 
-                question = f"Which drug used to treat {id2name[disease]} has the least number of side effects?"
+                question = random.choice(questions_aliases).format(id2name[disease])
                 
                 found_queries.append({
                     'question': question,
