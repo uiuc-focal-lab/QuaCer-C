@@ -24,7 +24,7 @@ class CustomQueryResult:
         self.other_correct_answers = other_correct_answers if other_correct_answers else []
 
 def generate_options_with_exclusions(correct_answer, excluded_answers, context_nodes, 
-                                   random_entities, graph, min_num_options=4):
+                                   random_entities, graph, distractor_nodes, min_num_options=4):
     """
     Generate answer options while excluding certain nodes.
     
@@ -95,7 +95,7 @@ class CustomQueryGenerator:
 
     def generate_query_data(self, query_result, id2name, graph_text_edge, 
                           tokenizer, shuffle_context=False, 
-                          max_context_length=30000):
+                          max_context_length=30000, distractor_query=False):
         """Generate full query data from context edges"""
 
         context_list = []
@@ -107,12 +107,17 @@ class CustomQueryGenerator:
             if node1 in graph_text_edge and node2 in graph_text_edge[node1]:
                 context_list.extend(graph_text_edge[node1][node2])
 
+        distractor_nodes = []
+        if distractor_query:
+            distractor_nodes = [nodes[0] for nodes in query_result.distractor_context_edges]
+                
         options = generate_options_with_exclusions(
             query_result.chosen_answer,
             query_result.other_correct_answers,
             list(context_nodes),
             get_random_entities(list(context_nodes), self.graph_algos.graph),
-            self.graph_algos.graph
+            self.graph_algos.graph,
+            distractor_nodes
         )
 
         all_context = []
