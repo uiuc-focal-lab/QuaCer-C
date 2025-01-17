@@ -19,18 +19,23 @@ import math
 
 FEW_SHOT_EXAMPLES = """
 Example questions and correct answers:
-Common Context: entity_B is the son of entity_A. entity_E is the sister of entity_A. entity_B leads entity_C. Entity_D is a member of Entity_C. Entity_D is a friend of entity_E. entity_E has mother entity_F who likes the services of entity_C.
-question 1: entity_A->(father of)->(leader of)->?
-Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_B
-answer: 2. entity_C
-explanation: entity_A->(father of)entity_B->(leader of)entity_C
-how to get answer: find who entity_A is father of to get entity_B, then find what B is the leader of to get entity_C which the final answer.
+Common Context: (drug) entity_A has side effects: effect_1, effect_5. (disease) entity_C has contraindication relation to (drug) entity_E. (disease) entity_C is indicated for (drug) entity_A.
+                (drug) entity_D has side effects: effect_2, effect_3, effect_4. (drug) entity_D has indication for (disease) entity_C. (drug) entity_E has indication to (disease) entity_B. 
+                (gene/protein) entity_F is carrier for (drug) entity_E. (disease) entity_B is indicated for (drug) entity_G.
+                
+question 1: Which drug for (disease) entity_C is associated with the fewest side effects?
+Options: 1. entity_F,\n 2. entity_E,\n 3. entity_D,\n 4. entity_A,\n 5. entity_B
+answer: 2. entity_A
+explanation: entity_A has two side effects while entity_D the other indication has 3 side effects, so answer is entity_A.
+how to get answer: Find the drugs entity_C is indicated for, which gives us entity_A and entity_D. Then find the side effects of these drugs and
+conclude that entity_A has fewer side effects.
 
-question 2: entity_B->(chief of)->(constitues)->(companion of)->?
-Options: 1. entity_F,\n 2. entity_C,\n 3. entity_D,\n 4. entity_E,\n 5. entity_A
+question 2: What drugs should be avoided in (disease) entity_C but are indicated for (disease) entity_B?
+Options: 1. entity_F,\n 2. entity_A,\n 3. entity_D,\n 4. entity_E,\n 5. entity_B
 answer: 4. entity_E
-explanation: entity_B->(chief of)entity_C->(constitues)entity_D->(companion of)entity_E
-how to get answer: find what entity_B is the chief of to get entity_C, find what entity_C constitutes of to get entity_D, then find the companion of entity_D of to get entity_E.
+explanation: entity_B is indicated for entity_E (drug), and entity_E has contraindication to entity_C.
+how to get answer: find the drugs entity_B is indicated for to get entity_E, and entity_G. then find the contraindications of entity_C to get entity_E.
+The intersection of these two sets gives the answer, which in this case is entity_E.
 """
 
 # question 3: entity_C->(has membership of)->(friend)->(mom)->?
@@ -716,6 +721,7 @@ def create_context_list(all_sents, relevant_sents_path, relevant_sents_opts, tok
                     all_sents_set.add(a_item)
             if len(add_list) > 0:
                 combined_list.append(add_list)
+            
         return combined_list
     flat_relevant_sents = [item for sublist in relevant_sents_path for item in sublist]
     tokenized_relevant_sents = tokenizer(flat_relevant_sents, add_special_tokens=False)

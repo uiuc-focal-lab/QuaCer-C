@@ -5,7 +5,8 @@ import google.generativeai as genai
 import time
 from experiment_utils import *
 from experiment_utils import get_base_args, run_experiment
-from subgraph_utils import least_side_effects_discoverer
+from subgraph_utils import *
+from discovery_functions import *
 
 BATCH_NUM = 1
 GPU_MAP = {0: "6GiB", 1: "8GiB", 2: "8GiB", 3: "8GiB", "cpu":"120GiB"}
@@ -26,7 +27,7 @@ def load_model(model_name="gemini-1.5-flash", only_tokenizer=False,
     global CONTINUOUS_SAFE
     tokenizer = None
     if not only_tokenizer:
-        genai.configure(api_key=os.environ["API_KEY"])
+        genai.configure(api_key='AIzaSyC2AGDdDOnByimRBLAXNpAQzV1KIiJ7Pkk')
         model = genai.GenerativeModel(model_name)
         return tokenizer, model
     else:
@@ -76,11 +77,29 @@ def main():
     
     # Define all discovery functions and their names
     discovery_funcs = [
-        lambda graph, **kwargs: least_side_effects_discoverer(graph, id2name=kwargs.get('id2name')),
+        lambda graph, **kwargs: off_label_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: dual_indication_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: synergistic_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: gene_target_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: phenotype_drug_contraindication_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: drug_contraindication_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: exposure_drug_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: phenotype_group_disease_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: least_side_effects_discoverer(graph, **kwargs),
+        lambda graph, **kwargs: contraindication_indication_discoverer(graph, **kwargs)
     ]
-    
+
     discovery_names = [
+        'off_label',
+        'dual_indication',
+        'synergistic',
+        'gene_target',
+        'phenotype_drug_contraindication',
+        'drug_contraindication',
+        'exposure_drug',
+        'phenotype_group_disease',
         'least_side_effects',
+        'contraindication_indication'
     ]
     
     # Can specify which certificates to generate:

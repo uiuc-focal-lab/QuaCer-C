@@ -78,7 +78,7 @@ def experiment_pipeline(graph_algos, graph_text_edge, entity_aliases,
             for j in range(BATCH_NUM):
                 query_data = None
                 while query_data is None:
-                    query_result = query_generator.get_single_query(discovery_func_idx)
+                    query_result = query_generator.get_single_query(discovery_func_idx, id2name=id2name, distractor_setting=distractor_query)
                     if query_result is not None:
                         query_data = query_generator.generate_query_data(
                             query_result,
@@ -86,7 +86,8 @@ def experiment_pipeline(graph_algos, graph_text_edge, entity_aliases,
                             graph_text_edge,
                             tokenizer,
                             shuffle_context=shuffle_context,
-                            max_context_length=model_context_length
+                            max_context_length=model_context_length,
+                            distractor_query=distractor_query
                         )
                 
                 options_str = '\n'.join([f'{i+1}. {id2name[option]}' 
@@ -195,7 +196,7 @@ def run_experiment(args, load_model, query_model_func, discovery_funcs, discover
             BATCH_NUM=BATCH_NUM,
             INPUT_DEVICE=INPUT_DEVICE,
             model_context_length=model_context_length,
-            distractor_query=args.disctractor_query
+            distractor_query=args.distractor_query
         )
         
         end_time = time.time()
