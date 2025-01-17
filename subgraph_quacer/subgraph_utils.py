@@ -57,7 +57,7 @@ def generate_options_with_exclusions(correct_answer, excluded_answers, context_n
     safe_distractors_entities = [(e, parent) for e, parent in distractor_nodes if e not in excluded_answers]
     amazing_entities = []
     for ent, answer_parent in safe_distractors_entities:
-            if correct_option_type == 'any' or get_entity_type(ent, id2name) == correct_option_type:
+            if correct_option_type == 'any' or get_entity_type(ent, id2name) == correct_option_type and graph[answer_parent][ent] in essential_edge_rels:
                 amazing_entities.append((ent, answer_parent))
     random.shuffle(amazing_entities)
     good_random_entities = []
