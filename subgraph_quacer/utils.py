@@ -733,6 +733,9 @@ def create_context_list(all_sents, relevant_sents_path, relevant_sents_opts, tok
 
     option_sentences_add = []
     # Tokenize option sentences if we can
+    if type(relevant_sents_opts[0]) == list:
+        relevant_sents_opts = [item for sublist in relevant_sents_opts for item in sublist]
+        
     for option_sents in relevant_sents_opts:
         tokenized_relevant_sents = tokenizer(option_sents, add_special_tokens=False)
         len_tokens = sum(len(ids) for ids in tokenized_relevant_sents['input_ids'])
