@@ -27,7 +27,7 @@ def load_model(model_name="gemini-1.5-flash", only_tokenizer=False,
     global CONTINUOUS_SAFE
     tokenizer = None
     if not only_tokenizer:
-        genai.configure(api_key='AIzaSyC2AGDdDOnByimRBLAXNpAQzV1KIiJ7Pkk')
+        genai.configure(api_key='')
         model = genai.GenerativeModel(model_name)
         return tokenizer, model
     else:
